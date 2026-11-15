@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ScanOnPhone from "@/components/ScanOnPhone.vue"
 import { ref, onMounted, computed, nextTick } from 'vue'
 import {
   listStationAdmin,
@@ -264,9 +265,7 @@ onMounted(load)
                 : S('新增服务站', 'New station')
             }}
           </h2>
-          <a v-if="selected" :href="stationUrl" target="_blank" rel="noopener noreferrer"
-            >{{ S('查看页面', 'View station') }} ↗</a
-          >
+          <ScanOnPhone v-if="selected" :url="stationUrl" :label="S('扫码查看服务站', 'Scan to view station')" />
         </div>
         <div class="station-tabs" role="tablist" :aria-label="S('配置分类', 'Settings categories')">
           <button

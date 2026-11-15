@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import ScanOnPhone from "@/components/ScanOnPhone.vue"
 import { computed, ref, reactive, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QRCode from 'qrcode'
 import { lanOrigin } from '@/utils/lanOrigin'
 import BrandLogo from '@/components/BrandLogo.vue'
 import DigitalAvatarPlayer from '@/components/DigitalAvatarPlayer.vue'
+import StationScenicGallery from '@/components/StationScenicGallery.vue'
 import ScenicSpotCover from '@/components/ScenicSpotCover.vue'
 import ScenicVisitContext from '@/components/ScenicVisitContext.vue'
 import RouteOverview from '@/components/RouteOverview.vue'
@@ -13,6 +15,7 @@ import StationWalkingDirections from '@/components/StationWalkingDirections.vue'
 import StationVisitorInfo from '@/components/StationVisitorInfo.vue'
 import {
   Guide,
+  Clock,
   ChatDotRound,
   MapLocation,
   Picture,
@@ -77,6 +80,10 @@ const prefs = reactive(defaultStationPlanningInput()),
   plans = ref<StationPlan[]>([]),
   planIndex = ref(0),
   planStale = ref(false)
+const themes = [
+  ['history', '历史文化', 'History'], ['nature', '自然风光', 'Nature'],
+  ['photography', '摄影', 'Photography'], ['family', '亲子', 'Family']
+] as const
 const endAreaConfirmed = ref(false)
 const endpointOptions = ref<HTMLElement | null>(null)
 const plan = computed(() => plans.value[planIndex.value]),
@@ -86,10 +93,8 @@ const question = ref(''),
   messages = ref<Array<{ role: string; text: string }>>([]),
   lastQuestion = ref('')
 const selectedSpot = ref<StationSpot | null>(null),
-  search = ref(''),
   directions = ref<StationDirections | null>(null),
   directionTitle = ref('')
-const explorePage = ref(0)
 const selectedSpotAdded = computed(() => !!selectedSpot.value && prefs.spot_ids.includes(selectedSpot.value.spot_id))
 const directionsResult = ref<HTMLElement | null>(null)
 const planningActions = ref<HTMLElement | null>(null)
@@ -194,24 +199,12 @@ const hero = computed(
       ['昆明湖', '长廊', '佛香阁', '十七孔桥'].includes(s.spot_name)
     )[heroIndex.value % 4] || catalog.value?.spots[0]
 )
-const filteredSpots = computed(
-  () =>
-    catalog.value?.spots.filter((s) =>
-      (t(s.spot_name) + ' ' + s.spot_name).toLowerCase().includes(search.value.toLowerCase())
-    ) || []
-)
-const pagedSpots = computed(() =>
-  filteredSpots.value.slice(explorePage.value * 6, explorePage.value * 6 + 6)
-)
 const activeNotices = computed(
   () =>
     station.value?.announcements.filter(
       (a) => !a.expires_at || Date.parse(a.expires_at) > clock.value
     ) || []
 )
-watch(search, () => {
-  explorePage.value = 0
-})
 const options = computed(() => [
   {
     key: 'plan' as Task,
@@ -305,6 +298,20 @@ function metricTime(minutes: number | null | undefined) {
   return minutes == null ? '—' : minutes + ' ' + S('分钟', 'min')
 }
 
+// The station serves its own uploaded photos through the same-origin files proxy.
+function stationPhotos(data: StationCatalog): StationCatalog {
+  return { ...data, spots: data.spots.map(spot => {
+    if (!spot.image_path) return spot
+    try {
+      const url = new URL(spot.image_path, window.location.origin)
+      if (url.pathname.startsWith('/api/v1/files/tour_files/spot_images/')) {
+        return { ...spot, image_path: url.pathname + url.search }
+      }
+    } catch { /* Keep the original value for the cover component's fallback chain. */ }
+    return spot
+  }) }
+}
+
 async function load() {
   const own = ++configurationVersion,
     id = stationId.value
@@ -315,7 +322,7 @@ async function load() {
   try {
     const data = await getStation(id, configurationController.signal)
     if (disposed || own !== configurationVersion) return
-    catalog.value = data
+    catalog.value = stationPhotos(data)
     if (!engaged.value) visitorVolume.value = data.station.volume
     offline.value = false
     stale.value = false
@@ -341,7 +348,7 @@ async function load() {
     try {
       const cached = JSON.parse(localStorage.getItem('station-public-' + stationId.value) || 'null')
       if (cached && Date.now() - cached.saved < 7 * 86400000) {
-        catalog.value = cached.data
+        catalog.value = stationPhotos(cached.data)
         stale.value = true
       }
     } catch { /* Storage can be unavailable; retain the current in-memory state. */ }
@@ -446,7 +453,6 @@ function reset(reconnect = true) {
   question.value = ''
   lastQuestion.value = ''
   selectedSpot.value = null
-  search.value = ''
   directions.value = null
   showShare.value = false
   shareBusy.value = false
@@ -469,7 +475,6 @@ function reset(reconnect = true) {
   endAreaConfirmed.value = false
   setLocale(station.value?.default_language || 'zh')
   idle.touch()
-  explorePage.value = 0
   wayfindingKind.value = 'exits'
   facilitySearch.value = ''
   if (previous) void endStationVisit(previous).catch(() => {})
@@ -479,9 +484,17 @@ function reset(reconnect = true) {
   }
 }
 function toggleStop(s: StationSpot) {
+  prefs.skip_ids = prefs.skip_ids.filter(id => id !== s.spot_id)
+  if (prefs.spot_ids.includes(s.spot_id)) delete prefs.dwell_minutes[s.spot_id]
   prefs.spot_ids = prefs.spot_ids.includes(s.spot_id)
     ? prefs.spot_ids.filter((id) => id !== s.spot_id)
     : [...prefs.spot_ids, s.spot_id]
+}
+function setDwell(spot: StationSpot, event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.value) delete prefs.dwell_minutes[spot.spot_id]
+  else prefs.dwell_minutes[spot.spot_id] = Math.max(1, Math.min(240, Math.round(input.valueAsNumber || 1)))
+  input.value = String(prefs.dwell_minutes[spot.spot_id] ?? spot.visit_duration ?? 10)
 }
 function chooseEndArea(area: StationPlanningInput['end_area']) {
   prefs.end_area = area
@@ -506,12 +519,14 @@ async function calculate() {
   try {
     const v = await ensureVisit()
     if (!v || own !== version) return
+    const submitted = JSON.stringify(prefs)
     const data = await planAtStation(
       v,
       { ...prefs, spot_ids: [...prefs.spot_ids], language: locale.value },
       controller.signal
     )
     if (disposed || own !== version) return
+    if (submitted !== JSON.stringify(prefs)) return
     plans.value = data.plans
     planIndex.value = 0
     planStale.value = false
@@ -575,6 +590,11 @@ async function ask(value = question.value) {
       budget,
       end_area,
       avoid_steps,
+      skip_ids: data.preferences.skip_ids ?? prefs.skip_ids,
+      dwell_minutes: data.preferences.dwell_minutes ?? prefs.dwell_minutes,
+      pace: data.preferences.pace ?? prefs.pace,
+      interest_weights: data.preferences.interest_weights ?? prefs.interest_weights,
+      fill_time: data.preferences.fill_time ?? prefs.fill_time,
       spot_ids: [...spot_ids],
       language: locale.value
     })
@@ -702,7 +722,7 @@ async function showDirections(key: string, title: string) {
       directions.value = data
       directionTitle.value = title
       await nextTick()
-      directionsResult.value?.scrollIntoView?.({
+      if (wayfindingKind.value !== 'attractions' || window.matchMedia('(max-width: 700px)').matches) directionsResult.value?.scrollIntoView?.({
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
           ? 'instant'
           : 'smooth',
@@ -1126,8 +1146,10 @@ function backToAttractions() {
                 <h1>{{ S('游览规划', 'Plan your visit') }}</h1>
               </div>
               <div class="station-planning-form">
-                <fieldset>
-                  <legend>{{ S('您有多少时间？', 'How much time do you have?') }}</legend>
+                <div class="station-planning-basics">
+                  <div class="station-planning-card station-budget-card">
+                    <fieldset>
+                  <legend><Clock aria-hidden="true" />{{ S('您有多少时间？', 'How much time do you have?') }}</legend>
                   <div class="station-choice-row">
                     <button
                       v-for="m in [60, 120, 180, 240]"
@@ -1137,7 +1159,7 @@ function backToAttractions() {
                     >
                       {{ m / 60 }} {{ S('小时', 'h') }}</button
                     ><label class="station-custom-time"
-                      ><input
+                      ><span class="station-custom-time-label">{{ S('自定义', 'Custom') }}</span><input
                         v-model.number="prefs.budget"
                         type="number"
                         min="20"
@@ -1147,8 +1169,10 @@ function backToAttractions() {
                     >
                   </div>
                 </fieldset>
-                <fieldset ref="endpointOptions">
-                  <legend>{{ S('请选择游览终点', 'Choose where to finish') }}</legend>
+                  </div>
+                  <div class="station-planning-card station-finish-card">
+                    <fieldset ref="endpointOptions">
+                  <legend><Location aria-hidden="true" />{{ S('请选择游览终点', 'Choose where to finish') }}</legend>
                   <div
                     class="station-choice-row station-endpoint-options"
                     role="group"
@@ -1182,6 +1206,37 @@ function backToAttractions() {
                     }}</small></span
                   ></label
                 >
+                  </div>
+                </div>
+                <details class="station-planner-settings">
+                  <summary>
+                    <span class="station-settings-title">{{ S('兴趣与步行偏好', 'Interests and walking preferences') }}</span>
+                    <span class="station-settings-toggle"><span class="station-settings-expand">{{ S('展开', 'Expand') }}</span><span class="station-settings-collapse">{{ S('收起', 'Collapse') }}</span><ArrowRight aria-hidden="true" /></span>
+                  </summary>
+                  <fieldset>
+                    <legend>{{ S('想优先看什么？', 'Which themes matter most?') }}</legend>
+                    <div class="station-choice-row">
+                      <button v-for="[key, zh, en] in themes" :key="key" :aria-pressed="prefs.interest_weights[key] !== undefined"
+                        @click="prefs.interest_weights[key] !== undefined ? delete prefs.interest_weights[key] : prefs.interest_weights[key] = 50">{{ S(zh, en) }}</button>
+                    </div>
+                    <div v-for="[key, zh, en] in themes" :key="key">
+                      <label v-if="prefs.interest_weights[key] !== undefined" class="station-weight">
+                        <span>{{ S(zh, en) }}</span> <input v-model.number="prefs.interest_weights[key]" type="range" min="0" max="100" step="1"
+                          :style="{ '--weight-progress': prefs.interest_weights[key] + '%' }" />
+                        <output>{{ prefs.interest_weights[key] }}</output>
+                      </label>
+                    </div>
+                  </fieldset>
+                  <fieldset><legend>{{ S('步行速度', 'Walking pace') }}</legend>
+                    <div class="station-choice-row"><button v-for="[key, zh, en] in [['standard','标准步速','Standard'],['relaxed','慢行多休息','Relaxed']] as const"
+                      :key="key" :aria-pressed="prefs.pace === key" @click="prefs.pace = key">{{ S(zh, en) }}</button></div>
+                  </fieldset>
+                  <fieldset><legend>{{ S('您想略过的景点', 'Attractions you would like to skip') }}</legend>
+                    <div class="station-choice-row"><button v-for="spot in catalog.spots" :key="spot.spot_id"
+                      :disabled="prefs.spot_ids.includes(spot.spot_id)" :aria-pressed="prefs.skip_ids.includes(spot.spot_id)"
+                      @click="prefs.skip_ids = prefs.skip_ids.includes(spot.spot_id) ? prefs.skip_ids.filter(id => id !== spot.spot_id) : [...prefs.skip_ids, spot.spot_id]">{{ t(spot.spot_name) }}</button></div>
+                  </fieldset>
+                </details>
                 <section class="station-manual-stops" aria-labelledby="station-manual-stops-title">
                   <header class="station-manual-heading">
                     <h2 id="station-manual-stops-title">
@@ -1195,7 +1250,7 @@ function backToAttractions() {
                     <button
                       v-if="prefs.spot_ids.length"
                       class="station-clear-stops"
-                      @click="prefs.spot_ids = []"
+                      @click="prefs.spot_ids = []; prefs.dwell_minutes = {}"
                     >
                       {{ S('清空选择', 'Clear selection') }}
                     </button>
@@ -1208,16 +1263,34 @@ function backToAttractions() {
                       )
                     }}
                   </p>
+                  <details v-if="prefs.spot_ids.length" class="station-planner-settings">
+                    <summary>
+                      <span class="station-settings-title">{{ S('调整已选景点停留时间', 'Adjust visit times') }}</span>
+                      <span class="station-settings-toggle"><span class="station-settings-expand">{{ S('展开', 'Expand') }}</span><span class="station-settings-collapse">{{ S('收起', 'Collapse') }}</span><ArrowRight aria-hidden="true" /></span>
+                    </summary>
+                    <div class="station-dwell-grid">
+                      <label v-for="spot in catalog.spots.filter(s => prefs.spot_ids.includes(s.spot_id))" :key="spot.spot_id" class="station-dwell-item">
+                        <span>{{ t(spot.spot_name) }}</span>
+                        <input type="number" min="1" max="240" :value="prefs.dwell_minutes[spot.spot_id] ?? spot.visit_duration"
+                          @change="setDwell(spot, $event)" /> <span>{{ S('分钟','min') }}</span>
+                      </label>
+                    </div>
+                  </details>
+                  <label v-if="prefs.spot_ids.length" class="station-fill"><input v-model="prefs.fill_time" type="checkbox" />
+                    {{ S('保留已选景点，有时间再推荐其他站', 'Keep my stops and suggest more if time allows') }}</label>
                   <div class="station-stop-options">
                     <button
                       v-for="spot in catalog.spots"
                       :key="spot.spot_id"
+                      class="station-stop-choice"
                       :aria-pressed="prefs.spot_ids.includes(spot.spot_id)"
                       @click="toggleStop(spot)"
                     >
-                      <Check v-if="prefs.spot_ids.includes(spot.spot_id)" aria-hidden="true" />
-                      <Plus v-else aria-hidden="true" />
-                      <span class="station-stop-label">{{ t(spot.spot_name) }}</span>
+                      <ScenicSpotCover :spot="spot" class="station-stop-thumb" aria-hidden="true" />
+                      <span v-if="prefs.spot_ids.includes(spot.spot_id)" class="station-stop-selected" aria-hidden="true"><Check /></span>
+                      <span class="station-stop-caption">
+                        <span class="station-stop-label">{{ t(spot.spot_name) }}</span>
+                      </span>
                     </button>
                   </div>
                 </section>
@@ -1276,6 +1349,14 @@ function backToAttractions() {
                   <span>{{ S('离园出口', 'Exit') }}</span><strong>{{ plan.preferences.end_area === 'return' ? S('返回本站', 'Return here') : t(plan.route.exit_leg?.to_name || exits.find(exit => exit.area === plan.preferences.end_area)?.zh || '—') }}</strong>
                 </div>
               </div>
+              <p v-if="plan.kind === 'stairs'" class="station-route-update">
+                {{ S('同样的景点，少走已标台阶路段', 'Same stops, less walking on mapped stairs') }}
+                {{ plan.stairs_saved }} m · {{ S('增加用时', 'Additional time') }} {{ metricTime(plan.extra_minutes ?? 0) }}
+              </p>
+              <p v-if="plan.kind === 'easy' && plans[0]?.kind === 'balanced'" class="station-route-update">
+                {{ S('比兴趣优先方案少走', 'Walking saved vs. interest match') }}
+                {{ Math.max(0, (plans[0].route.walking_meters ?? 0) - (plan.route.walking_meters ?? 0)) }} m
+              </p>
               <p v-if="routeUpdate" class="station-route-update" role="status">{{ routeUpdate }}</p>
               <div class="station-route-tools">
                 <button
@@ -1374,7 +1455,7 @@ function backToAttractions() {
               v-else-if="task === 'info'"
               key="info"
               :now="clock"
-              :announcements="activeNotices"
+              :announcements="activeNotices" :summer-palace="stationId.startsWith('summer-palace')"
               @facilities="go('facilities')"
             />
             <div v-else-if="task === 'chat'" key="chat" class="station-chat">
@@ -1562,44 +1643,8 @@ function backToAttractions() {
                 ><div class="station-section-title">
                   <h1>{{ S('景点介绍', 'Explore attractions') }}</h1>
                 </div>
-                <input
-                  class="station-search"
-                  v-model="search"
-                  :placeholder="S('搜索景点', 'Search attractions')"
-                  :aria-label="S('搜索景点', 'Search attractions')"
-                />
-                <div class="station-attraction-grid">
-                  <button
-                    v-for="spot in pagedSpots"
-                    :key="spot.spot_id"
-                    @click="selectedSpot = spot"
-                  >
-                    <ScenicSpotCover :spot="spot" />
-                    <div>
-                      <h2>{{ t(spot.spot_name) }}</h2>
-                      <ArrowRight aria-hidden="true" />
-                    </div>
-                  </button>
-                </div>
-                <div v-if="filteredSpots.length > 6" class="station-explore-pages">
-                  <button :disabled="explorePage === 0" @click="explorePage--">
-                    ← {{ S('上一页', 'Previous') }}</button
-                  ><span>{{ explorePage + 1 }} / {{ Math.ceil(filteredSpots.length / 6) }}</span
-                  ><button
-                    :disabled="(explorePage + 1) * 6 >= filteredSpots.length"
-                    @click="explorePage++"
-                  >
-                    {{ S('下一页', 'Next') }} →
-                  </button>
-                </div>
-                <p v-if="!filteredSpots.length">
-                  {{
-                    S(
-                      '没有找到相关景点，请换个关键词。',
-                      'No matching attractions. Try another keyword.'
-                    )
-                  }}
-                </p></template
+                <StationScenicGallery v-if="catalog.spots.length" :spots="catalog.spots" @select="selectedSpot = $event" />
+                <p v-else>{{ S('暂无景点介绍。', 'No attractions available.') }}</p></template
               >
             </div>
             <div v-else-if="task === 'facilities'" key="facilities" class="station-facilities">
@@ -1631,11 +1676,14 @@ function backToAttractions() {
                 :placeholder="S('搜索目的景点', 'Find an attraction')"
                 :aria-label="S('搜索目的景点', 'Find an attraction')"
               />
+              <div :class="{ 'station-destination-layout': wayfindingKind === 'attractions' }">
               <div class="station-facility-grid">
+                <p v-if="wayfindingKind === 'attractions' && !facilityItems.length">{{ S('没有找到相关景点。', 'No matching attractions.') }}</p>
                 <button
                   v-for="item in facilityItems"
                   :key="item.key"
                   :disabled="item.disabled || busy || offline"
+                  :aria-pressed="!!directions && directionTitle === item.name"
                   @click="showDirections(item.key, item.name)"
                 >
                   <Location class="station-facility-icon" aria-hidden="true" /><strong>{{
@@ -1645,8 +1693,16 @@ function backToAttractions() {
                   ><ArrowRight class="station-facility-arrow" aria-hidden="true" />
                 </button>
               </div>
+              <div v-if="wayfindingKind === 'services' && stationId.startsWith('summer-palace')" class="station-official-services">
+                <article><h2>{{ S('卫生间与游客服务中心','Restrooms and visitor centres') }}</h2>
+                  <p>{{ S('打开园方导览地图，选择卫生间、第三卫生间或游客服务中心图层查看位置。','Open the park map and select restrooms, accessible family restrooms or visitor centres.') }}</p>
+                  <ScanOnPhone url="https://www.summerpalace.net.cn/guide_map.html" :label="S('扫码看设施地图', 'Scan for facilities map')" /></article>
+                <article><h2>{{ S('轮椅借用','Wheelchair loans') }}</h2>
+                  <p>{{ S('东宫门游客服务中心及六处门区提供轮椅借用。数量有限，可在到达时询问工作人员。','Wheelchairs are available at the East Palace Gate visitor centre and six entrances, subject to availability.') }}</p>
+                  <ScanOnPhone url="https://www.summerpalace.net.cn/single/detail/508.html" :label="S('扫码看借用说明', 'Scan for loan details')" /></article>
+              </div>
               <div
-                v-if="wayfindingKind === 'services' && !station?.facilities.some((f) => f.verified)"
+                v-else-if="wayfindingKind === 'services' && !station?.facilities.some((f) => f.verified)"
                 class="station-facility-note"
               >
                 <InfoFilled aria-hidden="true" />
@@ -1665,6 +1721,10 @@ function backToAttractions() {
                   :origin-name="stationName || S('本站', 'This station')"
                   :destination-name="directionTitle"
                 />
+              </div>
+              <p v-else-if="wayfindingKind === 'attractions'" class="station-route-prompt" role="status">
+                {{ busy ? S('正在计算步行路线…', 'Calculating walking directions…') : S('选择景点，查看从本站出发的步行路线。','Select an attraction to see walking directions from this station.') }}
+              </p>
               </div>
             </div>
           </Transition>

@@ -252,7 +252,7 @@ describe('Fixed service station', () => {
     await flushPromises()
     await button('景点介绍').trigger('click')
     await flushPromises()
-    await wrapper.get('.station-attraction-grid button').trigger('click')
+    await wrapper.get('.scenic-wall .wall-tile').trigger('click')
     await wrapper.get('.station-add-route').trigger('click')
     await flushPromises()
     expect(wrapper.get('.station-spot-detail h1').text()).toBe('长廊')
@@ -270,7 +270,7 @@ describe('Fixed service station', () => {
     await wrapper.get('.station-stop-options button').trigger('click')
     await button('景点介绍').trigger('click')
     await flushPromises()
-    await wrapper.get('.station-attraction-grid button').trigger('click')
+    await wrapper.get('.scenic-wall .wall-tile').trigger('click')
     expect(wrapper.get('.station-add-route').text()).toContain('加入路线')
     expect(wrapper.get('.station-add-route').attributes('disabled')).toBeUndefined()
     expect(wrapper.find('.station-spot-selection-note').exists()).toBe(false)
@@ -281,16 +281,16 @@ describe('Fixed service station', () => {
     await flushPromises()
     await button('景点介绍').trigger('click')
     await flushPromises()
-    await wrapper.findAll('.station-attraction-grid button')[0].trigger('click')
+    await wrapper.findAll('.scenic-wall .wall-tile')[0].trigger('click')
     await wrapper.get('.station-add-route').trigger('click')
     await wrapper.get('.station-back').trigger('click')
-    await wrapper.findAll('.station-attraction-grid button')[1].trigger('click')
+    await wrapper.findAll('.scenic-wall .wall-tile')[1].trigger('click')
     expect(wrapper.get('.station-add-route').attributes('disabled')).toBeUndefined()
     await wrapper.get('.station-add-route').trigger('click')
     expect(wrapper.get('.station-spot-detail h1').text()).toBe('佛香阁')
     expect(wrapper.get('.station-spot-selection-note').text()).toContain('已选 2 个景点')
     await wrapper.get('.station-back').trigger('click')
-    await wrapper.findAll('.station-attraction-grid button')[0].trigger('click')
+    await wrapper.findAll('.scenic-wall .wall-tile')[0].trigger('click')
     expect(wrapper.get('.station-add-route').attributes('disabled')).toBeDefined()
     expect(api.planAtStation).not.toHaveBeenCalled()
   })
@@ -475,7 +475,7 @@ describe('Fixed service station', () => {
     expect(wrapper.find('.station-network').exists()).toBe(false)
   })
 
-  it('uses only concrete route details after a reply containing legacy preferences', async () => {
+  it('keeps the confirmed walking pace and route details after a consultation', async () => {
     vi.mocked(api.consultStation).mockResolvedValue({
       answer: '请确认时间和终点',
       end_area_confirmed: true,
@@ -501,15 +501,18 @@ describe('Fixed service station', () => {
     await flushPromises()
     await button('查看路线条件').trigger('click')
     await flushPromises()
-    expect(wrapper.text()).not.toContain('想看什么')
-    expect(wrapper.text()).not.toContain('游览节奏')
-    expect(wrapper.text()).not.toContain('偏好')
+    const settings = wrapper.get('details.station-planner-settings')
+    expect(settings.get('summary').text()).toContain('兴趣与步行偏好')
+    expect(settings.attributes('open')).toBeUndefined()
+    expect(button('慢行多休息').attributes('aria-pressed')).toBe('true')
     if (!wrapper.find('.station-endpoint-options [aria-pressed="true"]').exists()) await wrapper.get('.station-endpoint-options button').trigger('click')
     await button('生成路线').trigger('click')
     await flushPromises()
     expect(api.planAtStation).toHaveBeenCalledWith(
       visit,
       {
+        ...api.defaultStationPlanningInput(),
+        pace: 'relaxed',
         budget: 180,
         end_area: 'north',
         avoid_steps: true,

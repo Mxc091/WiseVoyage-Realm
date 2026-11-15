@@ -45,6 +45,46 @@ class StationServiceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()['plans']
 
+    def test_fill_time_respects_required_stop_dwell_exclusions_and_exit_deadline(self):
+        ids = {s['spot_name']: s['spot_id'] for s in SPOTS}
+        plans = self.plans(spot_ids=[ids['长廊']], skip_ids=[ids['苏州街']], fill_time=True,
+                           dwell_minutes={str(ids['长廊']): 28}, interest_weights={'history': 55, 'nature': 45},
+                           pace='relaxed', end_area='east', start_time='14:45', exit_by='16:30')
+        self.assertTrue(plans)
+        for plan in plans:
+            route = plan['route']
+            dwell = {s['spot_id']: s['visit_minutes'] for s in route['stops']}
+            self.assertTrue(route['complete'])
+            self.assertLessEqual(route['total_minutes'], 105)
+            self.assertEqual(dwell[ids['长廊']], 28)
+            self.assertNotIn(ids['苏州街'], dwell)
+
+    def test_east_to_north_explains_all_disconnected_destinations(self):
+        ids = {s['spot_name']: s['spot_id'] for s in SPOTS}
+        dwell = {'长廊': 13, '十七孔桥': 10, '苏州街': 14, '玉澜堂': 8, '铜牛': 6}
+        requested = [ids[name] for name in dwell]
+        body = dict(budget=240, pace='relaxed', end_area='north', spot_ids=requested, avoid_steps=True,
+                    interest_weights={'nature': 66, 'photography': 70},
+                    dwell_minutes={ids[name]: minutes for name, minutes in dwell.items()})
+        def rejection(**overrides):
+            response = self.client.post(self.prefix + '/plans', json={**body, **overrides}, headers=self.headers)
+            self.assertEqual(response.status_code, 422)
+            return response.json()['detail']
+        detail = rejection()
+        self.assertIn('通往苏州街、终点北宫门', detail)
+        self.assertIn('从起点可以到达的已选景点有长廊、十七孔桥、玉澜堂、铜牛', detail)
+        self.assertIn('苏州街与北宫门之间可以步行', detail)
+        self.assertIn('终点北宫门', rejection(spot_ids=[], dwell_minutes={}))
+        self.assertNotIn('终点北宫门', rejection(end_area='east'))
+        self.assertIn('Suzhou Street', rejection(language='en'))
+        plan = self.plans(**{**body, 'avoid_steps': False})[0]['route']
+        self.assertEqual({s['spot_id']: s['visit_minutes'] for s in plan['stops']}, body['dwell_minutes'])
+        self.assertLessEqual(plan['total_minutes'], 240)
+        eastern = [spot_id for spot_id in requested if spot_id != ids['苏州街']]
+        route = self.plans(**{**body, 'spot_ids': eastern, 'end_area': 'east'})[0]['route']
+        self.assertEqual({s['spot_id'] for s in route['stops']}, set(eastern))
+        self.assertTrue(route['complete'])
+
     def share(self, plan):
         response = self.client.post(self.prefix + '/share', json={'plan_id':plan['plan_id']}, headers=self.headers)
         self.assertEqual(response.status_code, 200, response.text)

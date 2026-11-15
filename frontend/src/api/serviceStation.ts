@@ -59,7 +59,15 @@ export interface StationVisit {
   access_token: string
   expires_at: string
 }
+export type StationTheme = 'history' | 'nature' | 'photography' | 'family'
 export interface StationPlanningInput {
+  pace?: 'standard' | 'relaxed'
+  skip_ids?: number[]
+  dwell_minutes?: Record<number, number>
+  interest_weights?: Partial<Record<StationTheme, number>>
+  fill_time?: boolean
+  start_time?: string
+  exit_by?: string
   budget: number
   end_area: 'east' | 'north' | 'south' | 'return'
   avoid_steps: boolean
@@ -72,6 +80,8 @@ export interface StationPreferences extends StationPlanningInput {
   interest: 'all' | 'history' | 'nature' | 'photo' | 'family'
 }
 export interface StationPlan {
+  stairs_saved?: number
+  extra_minutes?: number
   plan_id: string
   kind: string
   title: string
@@ -96,8 +106,19 @@ export interface StationReply {
   source: string
   destination_key?: string | null
 }
-export const defaultStationPlanningInput = (): StationPlanningInput => ({
+export const defaultStationPlanningInput = (): StationPlanningInput & {
+  interest_weights: Partial<Record<StationTheme, number>>
+  skip_ids: number[]
+  dwell_minutes: Record<number, number>
+} => ({
   budget: 120,
+  pace: 'standard',
+  interest_weights: {},
+  skip_ids: [],
+  dwell_minutes: {},
+  fill_time: false,
+  start_time: '',
+  exit_by: '',
   end_area: 'east',
   avoid_steps: false,
   spot_ids: [],

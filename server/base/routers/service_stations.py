@@ -4,7 +4,7 @@ import hashlib
 import json
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
@@ -127,6 +127,12 @@ class VisitInput(BaseModel):
 class PlanInput(BaseModel):
     budget: int = Field(default=120, ge=20, le=480)
     pace: Literal['standard', 'relaxed'] = 'standard'
+    start_time: str = Field(default="", pattern=r"^(?:$|(?:[01]\d|2[0-3]):[0-5]\d)$")
+    exit_by: str = Field(default="", pattern=r"^(?:$|(?:[01]\d|2[0-3]):[0-5]\d)$")
+    skip_ids: list[int] = Field(default_factory=list, max_length=16)
+    dwell_minutes: dict[int, Annotated[int, Field(ge=1, le=240)]] = Field(default_factory=dict, max_length=16)
+    fill_time: bool = False
+    interest_weights: dict[Literal['history', 'nature', 'photography', 'family'], Annotated[int, Field(ge=0, le=100)]] = Field(default_factory=dict)
     interest: Literal['all', 'history', 'nature', 'photo', 'family'] = 'all'
     end_area: Literal['east', 'north', 'south', 'return'] = 'east'
     avoid_steps: bool = False
@@ -136,14 +142,17 @@ class PlanInput(BaseModel):
 
 def store_plans(db, visit, station, body):
     prefs = body.model_dump()
+    graph_version = network_version()
     try: options = plan_walk(station, catalog(db), prefs)
     except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    if graph_version != network_version():
+        raise HTTPException(409, "步行路网已更新，请重新规划")
     guide = guide_for(db, station)
     plans = []
     for option in options:
         snapshot = dict(**option, preferences=prefs, station=public_station(station),
             guide=public_guide(guide), generated_at=utcnow().isoformat() + 'Z',
-            network_version=network_version(), catalog_version=catalog_version(db), reception_version=visit_stamp(db, station), version=1)
+            network_version=graph_version, catalog_version=catalog_version(db), reception_version=visit_stamp(db, station), version=1)
         row = StationPlan(plan_id=secrets.token_urlsafe(18), visit_id=visit.visit_id,
             station_id=station.station_id, snapshot=snapshot,
             expires_at=utcnow() + timedelta(hours=1))
