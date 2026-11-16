@@ -53,7 +53,7 @@ for(const [file,moduleName] of [['tour-xingyun.vue','runtime']]){
       destroy(){}
     }},document:{getElementById:()=>({innerHTML:''}),createElement:()=>({}),head:{appendChild:node=>{if(node.onload)node.onload()}}},setTimeout:()=>1,clearTimeout(){},console:{error(){}}}
     vm.createContext(context)
-    vm.runInContext(fs.readFileSync(path.join(root,'common/avatar-performance.js'),'utf8').replace(/export /g,''),context)
+    vm.runInContext(fs.readFileSync(path.join(root,'common/avatar-audio.js'),'utf8').replace(/export /g,''),context)
     vm.runInContext(source.replace(/^import .*$/gm,'').replace('export default','globalThis.component='),context)
     const owner={callMethod:(method,event)=>events.push(event)}
     await context.component.methods.apply({command:'connect',id:1,gateway:'http://local/session',accessToken:'test',sdkUrl:'http://local/sdk.js',text:'',token:'test'},null,owner)
@@ -65,13 +65,13 @@ for(const [file,moduleName] of [['tour-xingyun.vue','runtime']]){
   })
 }
 
- test('tour preserves SDK face and body layer positioning',()=>{
+ test('tour keeps the native SDK canvas inside the centered display frame',()=>{
  const source=fs.readFileSync(path.join(root,'components/tour-xingyun.vue'),'utf8');
- assert.ok(!source.includes(':deep([width][height])'));
- assert.ok(!/transform:\s*none!important/.test(source));
+ assert.ok(source.includes(':deep([width][height])'));
+ assert.ok(/transform:\s*none!important/.test(source));
  });
 
-test('tour uses the reviewed SDK and the centered wide avatar frame',()=>{
+test('tour uses the reviewed SDK and a centered wide frame',()=>{
 const source=fs.readFileSync(path.join(root,'components/tour-xingyun.vue'),'utf8');
 assert.ok(source.includes('transform:translateX(0)'));
 assert.ok(!source.includes('script.src=value.sdkUrl'));
@@ -89,7 +89,7 @@ for(const [file,moduleName] of [['tour-xingyun.vue','runtime']]){
    destroy(){return instances.indexOf(this)===0?new Promise(r=>{releaseOld=r}):Promise.resolve()}
   }}}
   vm.createContext(c)
-  vm.runInContext(fs.readFileSync(path.join(root,'common/avatar-performance.js'),'utf8').replace(/export /g,''),c)
+  vm.runInContext(fs.readFileSync(path.join(root,'common/avatar-audio.js'),'utf8').replace(/export /g,''),c)
   const source=fs.readFileSync(path.join(root,'components',file),'utf8').match(new RegExp('<script module="'+moduleName+'" lang="renderjs">([\\s\\S]*?)<\\/script>'))[1]
   vm.runInContext(source.replace(/^import .*$/gm,'').replace('export default','globalThis.component='),c)
   const apply=c.component.methods.apply,owner={callMethod(){}}

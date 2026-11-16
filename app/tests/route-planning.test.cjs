@@ -1,11 +1,10 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm')
 const root=path.resolve(__dirname,'..'),plain=value=>JSON.parse(JSON.stringify(value)),tick=()=>new Promise(resolve=>setImmediate(resolve))
 function environment(){
-  const calls=[],storage={token:'account-token',login_provider:'password',user_id:5,'xingyun-tour-7':'tour-capability'}
+  const calls=[],storage={token:'account-token',user_id:5,'xingyun-tour-7':'tour-capability'}
   const uni={getStorageSync:key=>storage[key],setStorageSync:(key,value)=>storage[key]=value,removeStorageSync:key=>delete storage[key],showToast(){},navigateTo(){},reLaunch(){},getSystemInfoSync:()=>({}),request(options){const call={...options,aborted:false};calls.push(call);return{abort(){call.aborted=true}}}}
-  const context={uni,console,Promise,Date,Set,Number,Math,JSON,setTimeout,clearTimeout,setInterval:()=>1,clearInterval(){},BASE_URL:'http://local/api/v1',LOGIN_PROVIDER:'password'}
+  const context={uni,console,Promise,Date,Set,Number,Math,JSON,setTimeout,clearTimeout,setInterval:()=>1,clearInterval(){},BASE_URL:'http://local/api/v1'}
   vm.createContext(context)
-  vm.runInContext(fs.readFileSync(path.join(root,'common/onboarding.js'),'utf8').replace(/export /g,''),context)
   const coords=fs.readFileSync(path.join(root,'../shared/pedestrian-map.js'),'utf8').replace(/export /g,'')
   vm.runInContext(coords,context)
   const source=fs.readFileSync(path.join(root,'common/route-planning.js'),'utf8').replace(/^import .*$/gm,'').replace(/export /g,'')
@@ -15,7 +14,7 @@ function environment(){
 }
 function component(env,file,props={}){
   const source=fs.readFileSync(path.join(root,file),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1]
-  Object.assign(env.context,{FloatingTourButton:{},ScenicSheet:{},WanderPlanner:{},WanderWalk:{},WANDER_SESSION:'app-wander',RouteOverview:{},RouteTiming:{},TourRouteRepair:{},NocturneConfirm:{},TourXingyun:{},TourXfyun:{},prioritizeSummerPalace:(spots,routes)=>({spots,routes}),LANGUAGE_STORAGE_KEY:'language',translateTour:x=>x,assetUrl:x=>x})
+  Object.assign(env.context,{FloatingTourButton:{},ScenicSheet:{},RouteOverview:{},RouteTiming:{},TourRouteRepair:{},NocturneConfirm:{},TourXingyun:{},TourXfyun:{},prioritizeSummerPalace:(spots,routes)=>({spots,routes}),LANGUAGE_STORAGE_KEY:'language',translateTour:x=>x,assetUrl:x=>x})
   vm.runInContext(source.replace(/^import .*$/gm,'').replace('export default','globalThis.options='),env.context)
   const options=env.context.options,events=[],state={...props};Object.assign(state,options.data.call(state));
   state.$emit=(...args)=>events.push(args);state.t=x=>x;state.$nextTick=async callback=>{callback?.()};state.$forceUpdate=()=>{}

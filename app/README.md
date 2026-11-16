@@ -93,9 +93,3 @@ node app/tests/claim-guide-browser.cjs
 `main-update-browser.cjs`、`tour-flow-browser.cjs`、`spot-category-browser.cjs`、`route-touch-browser.cjs` 也支持 `APP_QA_DIST`。其他浏览器脚本直接使用当前源码、SDK 与本地 Leaflet，无需历史截图或编译输出。测试输出目录可重建；`APP_QA_OUT` 由支持该参数的脚本使用，其他脚本会创建各自的默认输出目录。
 
 自动化测试不替代 Android/iPhone 的相机、麦克风、定位、数字人解码与声音验证。`unpackage/` 为可重建的编译及测试输出，不属于交付源码；保留 `tests/` 和浏览器测试用于开发回归。
-
-### 首页园区地图
-
-构建 App 或 H5 时可注入公开的高德 Web 端 Key（`VITE_APP_AMAP_KEY`）与签名代理（`VITE_APP_AMAP_SERVICE_HOST`，以 `/_AMapService` 结尾）。代理保管安全密钥，构建值只需公开 Key 和代理 URL。未配置或高德加载失败时，首页使用带归属标注的 OpenStreetMap 备用底图。
-
-设施资料源自颐和园官方导览。部分点位以已核对的门区或地标作参考，属性卡说明定位精度。台阶显示随 App 打包的路网快照，避台阶路线调用现有路线预览接口，官方无障碍线路的说明和链接从道路信息查看。天气是颐和园区域预报，使用 Open-Meteo 与 CAMS，空气质量为 US AQI。服务部署如提供同源天气转发，可通过 `VITE_APP_PARK_WEATHER_PROXY` 指定代理前缀，转发其 `/forecast` 与 `/air-quality` 至对应的 Open-Meteo 端点。

@@ -1,165 +1,225 @@
 <template>
-  <view
-    class="welcome"
-    @touchstart="startSwipe" @touchmove="moveSwipe"
-    @touchend="endSwipe" @touchcancel="resetSwipe"
-  >
-    <view class="welcome-photo" aria-hidden="true" />
-    <view class="welcome-shade" :class="{ 'is-leaving': leaving }" aria-hidden="true" />
-    <view class="welcome-content" :class="{ 'is-dragging': dragging, 'is-leaving': leaving }" :style="motionStyle"
-      @transitionend="finishTransition"
-    >
-      <view class="welcome-type" role="heading" :aria-label="english ? 'Hi! Summer Palace welcomes you.' : 'Hi! 欢迎来到颐和园'">
-        <image class="welcome-hi" src="/static/welcome-summer-palace/hi.svg" mode="scaleToFill" aria-hidden="true" />
-        <view class="welcome-line" aria-hidden="true">
-          <image class="welcome-word" src="/static/welcome-summer-palace/welcomes.svg" mode="scaleToFill" />
-          <text class="welcome-destination" :class="{ 'is-english': english }">{{ english ? 'Summer Palace' : '颐和园' }}</text>
+  <view class="onboarding" :class="{ 'is-english': english, 'is-bursting': bursting, 'is-opening': showLogin, 'is-pressing': pressing, 'is-skipping': skipping }">
+    <view class="intro-header">
+      <button class="skip" :disabled="leaving" hover-class="none" @tap="skipIntro">{{ english ? 'Skip' : '跳过' }}</button>
+      <button class="lang-switch" :class="{ 'is-eng': !english }" hover-class="none" :aria-label="english ? '切换到中文' : 'Switch to English'" :aria-pressed="english" @tap="toggleLanguage">{{ english ? '中' : 'ENG' }}</button>
+    </view>
+
+    <swiper class="intro-swiper" :current="current" :duration="520" :circular="false" :autoplay="false" :disable-touch="leaving" @change="onChange" @transition="onTransition" @animationfinish="onAnimationFinish" @touchstart="onTouchStart" @touchend="onTouchEnd" @touchcancel="onTouchEnd">
+      <swiper-item v-for="(slide, index) in slides" :key="slide.id">
+        <view class="intro-slide" :class="{ 'is-current': current === index }">
+          <view class="illustration-space">
+            <view class="illustration-halo" />
+            <image class="intro-illustration" :src="slide.image" mode="aspectFit" :alt="slide.alt" />
+          </view>
+          <view class="intro-copy">
+            <text class="intro-title">{{ slide.title }}</text>
+          </view>
+        </view>
+      </swiper-item>
+    </swiper>
+
+    <view class="intro-footer">
+      <view class="pagination" :class="{ tracking }" role="group" :aria-label="english ? 'Introduction pages' : '介绍页切换'">
+        <button v-for="(slide, index) in slides" :key="slide.id" class="dot-target" :disabled="leaving" :aria-label="(english ? 'Page ' : '第 ') + (index + 1) + (english ? '' : ' 页')" :aria-current="current === index ? 'step' : undefined" @tap="selectSlide(index)">
+          <view class="dot" />
+        </button>
+        <view class="active-dot" :style="indicatorStyle" aria-hidden="true" />
+      </view>
+      <view class="cta-space">
+        <view v-if="current === slides.length - 1" class="cta-float">
+          <button class="continue-button" :disabled="leaving" hover-class="none" @touchstart="holdStart" @touchend="holdEnd" @touchcancel="holdCancel" @tap="finish(true)">
+            <text class="cta-label">{{ english ? 'Start exploring' : '开始体验' }}</text>
+          </button>
         </view>
       </view>
-      <button class="welcome-enter" hover-class="none" :disabled="leaving"
-        :aria-label="english ? 'Swipe up or tap to enter' : '上滑或点击进入首页'" @tap="beginEntry"
-      >
-        <view class="welcome-arrow" aria-hidden="true">
-          <image class="welcome-chevron" src="/static/welcome-summer-palace/chevrons.svg" mode="scaleToFill" />
-        </view>
-      </button>
+    </view>
+
+    <view v-if="showLogin" class="auth-reveal-layer" :style="revealStyle" aria-hidden="true"><AuthPage /></view>
+    <view v-if="bursting" class="burst-layer" aria-hidden="true">
+      <view v-for="particle in particles" :key="particle.id" class="burst-particle" :style="particle.style" />
     </view>
   </view>
 </template>
 
 <script>
+import { LOGIN_PROVIDER } from '../../common/config.js'
 import { LANGUAGE_STORAGE_KEY } from '../../common/tour-language.js'
-import { HOME_URL, ONBOARDING_STORAGE_KEY } from '../../common/onboarding.js'
-import { CLAIM_ROUTE, pendingClaim } from '../../common/station-claim.js'
-
-const SWIPE_DISTANCE = 56
-const EXIT_DURATION = 460
-
-// #ifdef H5
-// uni-view normalizes template events and does not retain native mouse pointer fields.
-const MOUSE_EVENTS = {
-  pointerdown: 'startMouseSwipe',
-  pointermove: 'moveMouseSwipe',
-  pointerup: 'endMouseSwipe',
-  pointercancel: 'cancelMouseSwipe',
-  pointerleave: 'cancelMouseSwipe',
-}
-// #endif
+import { ONBOARDING_STORAGE_KEY, appEntry } from '../../common/onboarding.js'
+import AuthPage from '../auth/auth.vue'
 
 export default {
+  components: { AuthPage },
   data() {
-    return { english: false, dragging: false, leaving: false, offset: 0 }
+    return { current: 0, progress: 0, transitionBase: 0, tracking: false, leaving: false, english: false,
+      slideWidth: 375, dotStep: 32, bursting: false, showLogin: false, pressing: false, skipping: false,
+      particles: [], originX: 187, originY: 700 }
   },
   computed: {
-    motionStyle() { return { '--swipe-offset': this.offset + 'px', '--exit-duration': EXIT_DURATION + 'ms' } },
+    slides() {
+      const copy = this.english ? [
+        { title: 'Your places.\nYour own journey.', alt: 'A garden, a bridge and a winding route' },
+        { title: 'Every view\nhas a story.', alt: 'A welcoming digital tour guide' },
+        { title: 'Stay curious.\nJust ask.', alt: 'An AI companion with a travel journal' },
+      ] : [
+        { title: '想去哪里\n就从这里出发', alt: '园林、石桥与连接景点的游览路线插画' },
+        { title: '山水有故事\n一路讲给你听', alt: '向游客招手的数字人导游插画' },
+        { title: '旅途有疑问\n随时问小导游', alt: 'AI 小导游与旅行手账插画' },
+      ]
+      return copy.map((slide, index) => ({ ...slide, id: index, image: '/static/onboarding/intro-' + (index + 1) + '.png' }))
+    },
+    indicatorStyle() {
+      const fraction = this.progress - Math.floor(this.progress)
+      const stretch = this.tracking ? 1 + Math.sin(fraction * Math.PI) * .7 : 1
+      return { transform: 'translate3d(' + (this.progress * this.dotStep) + 'px,0,0) scaleX(' + stretch + ')' }
+    },
+    revealStyle() { return { transformOrigin: this.originX + 'px ' + this.originY + 'px' } },
   },
   onLoad() {
     this.english = uni.getStorageSync(LANGUAGE_STORAGE_KEY) === 'en'
-    if (uni.getStorageSync(ONBOARDING_STORAGE_KEY)) {
-      this.leaving = true
-      this.openEntry()
-    }
+    const info = uni.getSystemInfoSync()
+    this.slideWidth = info.windowWidth || 375
+    this.dotStep = this.slideWidth * 46 / 750
+    if (uni.getStorageSync(ONBOARDING_STORAGE_KEY)) this.openEntry()
   },
-  onUnload() { clearTimeout(this._exitTimer) },
-  // #ifdef H5
-  mounted() {
-    for (const [type, handler] of Object.entries(MOUSE_EVENTS)) this.$el.addEventListener(type, this[handler])
+  onUnload() { clearTimeout(this._shrinkTimer); clearTimeout(this._revealTimer); clearTimeout(this._entryTimer) },
+  onResize(event) {
+    this.slideWidth = event.size.windowWidth
+    this.dotStep = this.slideWidth * 46 / 750
   },
-  beforeUnmount() {
-    for (const [type, handler] of Object.entries(MOUSE_EVENTS)) this.$el.removeEventListener(type, this[handler])
-  },
-  // #endif
   methods: {
-    // #ifdef H5
-    mouseTouch(event) {
-      return { identifier: event.pointerId, clientX: event.clientX, clientY: event.clientY }
+    setLanguage(language) {
+      if (this.leaving) return
+      const next = language === 'en' ? 'en' : 'zh'
+      this.english = next === 'en'
+      try { uni.setStorageSync(LANGUAGE_STORAGE_KEY, next) } catch (error) {}
     },
-    startMouseSwipe(event) {
-      if (event.pointerType === 'mouse' && event.button === 0) this.startSwipe({ touches: [this.mouseTouch(event)] })
+    toggleLanguage() { this.setLanguage(this.english ? 'zh' : 'en') },
+    onTouchStart() {
+      if (this.leaving) return
+      this.transitionBase = Math.round(this.progress)
+      this.tracking = true
     },
-    moveMouseSwipe(event) {
-      if (event.pointerType !== 'mouse' || !this._gesture) return
-      if (event.buttons !== 1) { this.resetSwipe(); return }
-      this.moveSwipe({ touches: [this.mouseTouch(event)] })
-      if (this.dragging && event.currentTarget?.setPointerCapture && !event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.setPointerCapture(event.pointerId)
+    onTouchEnd() { this.tracking = false; this.progress = this.current },
+    onTransition(event) {
+      if (!this.tracking) return
+      this.progress = Math.max(0, Math.min(this.slides.length - 1, this.transitionBase + event.detail.dx / this.slideWidth))
+    },
+    onChange(event) {
+      this.current = event.detail.current
+      if (!this.tracking) this.progress = this.current
+    },
+    onAnimationFinish(event) {
+      this.current = event.detail.current
+      this.progress = this.current
+      this.transitionBase = this.current
+      this.tracking = false
+    },
+    selectSlide(index) {
+      if (this.leaving) return
+      this.tracking = false
+      this.current = index
+      this.progress = index
+    },
+    completeIntro() {
+      try { uni.setStorageSync(ONBOARDING_STORAGE_KEY, true); return true }
+      catch (error) {
+        uni.showToast({ title: this.english ? 'Could not save. Please try again.' : '保存失败，请重试', icon: 'none' })
+        return false
       }
     },
-    endMouseSwipe(event) {
-      if (event.pointerType === 'mouse') this.endSwipe({ changedTouches: [this.mouseTouch(event)] })
-    },
-    cancelMouseSwipe(event) {
-      if (event.pointerType === 'mouse') this.resetSwipe()
-    },
-    // #endif
-    startSwipe(event) {
+    holdStart() {
       if (this.leaving) return
-      this.resetSwipe()
-      if (event.touches.length !== 1) return
-      const touch = event.touches[0]
-      this._gesture = { id: touch.identifier, x: touch.clientX, y: touch.clientY }
+      this.pressing = true
     },
-    moveSwipe(event) {
-      if (!this._gesture) return
-      if (event.touches.length !== 1) { this.resetSwipe(); return }
-      const touch = event.touches[0]
-      if (touch.identifier !== this._gesture.id) { this.resetSwipe(); return }
-      const up = this._gesture.y - touch.clientY
-      const sideways = Math.abs(this._gesture.x - touch.clientX)
-      this.dragging = up > 8 && up > sideways * 1.25
-      this.offset = this.dragging ? -Math.min(up * .42, 64) : 0
-    },
-    endSwipe(event) {
-      if (!this._gesture) return
-      const touch = Array.from(event.changedTouches || []).find(item => item.identifier === this._gesture.id)
-      const up = touch ? this._gesture.y - touch.clientY : 0
-      const sideways = touch ? Math.abs(this._gesture.x - touch.clientX) : 0
-      this._gesture = null
-      this.dragging = false
-      if (up >= SWIPE_DISTANCE && up > sideways * 1.25) this.beginEntry()
-      else this.offset = 0
-    },
-    resetSwipe() {
-      this._gesture = null
-      this.dragging = false
-      this.offset = 0
-    },
-    beginEntry() {
+    holdEnd() {
       if (this.leaving) return
-      this._gesture = null
-      this.dragging = false
+      this.pressing = false
+      this.release()
+    },
+    holdCancel() {
+      if (this.leaving) return
+      this.pressing = false
+    },
+    release() {
+      if (this.leaving) return
+      this.pressing = false
+      if (!this.completeIntro()) return
       this.leaving = true
-      // WebViews that suppress transition events still complete navigation.
-      this._exitTimer = setTimeout(() => this.openEntry(), EXIT_DURATION + 80)
+      // The dots must leave from the words themselves, not from the whole pill.
+      uni.createSelectorQuery().in(this).select('.cta-label').boundingClientRect(rect => {
+        if (!rect) { this.navigateToLogin(); return }
+        this.originX = rect.left + rect.width / 2
+        this.originY = rect.top + rect.height / 2
+        this.particles = this.makeParticles(rect)
+        this.bursting = true
+        this._revealTimer = setTimeout(() => { this.showLogin = true }, 320)
+        this._entryTimer = setTimeout(() => this.navigateToLogin(), 1350)
+      }).exec()
     },
-    finishTransition(event) {
-      if (this.leaving && event.target === event.currentTarget && event.propertyName === 'opacity') this.openEntry()
-    },
-    openEntry() {
-      if (this._opening) return
-      clearTimeout(this._exitTimer)
-      this._opening = true
-      const fail = title => {
-        this._opening = false
-        this.leaving = false
-        this.resetSwipe()
-        uni.showToast({ title, icon: 'none' })
-      }
-      const completed = uni.getStorageSync(ONBOARDING_STORAGE_KEY)
-      try {
-        if (!completed) uni.setStorageSync(ONBOARDING_STORAGE_KEY, true)
-      } catch (_) {
-        fail(this.english ? 'Could not save. Please try again.' : '保存失败，请重试')
+    finish(animate = true) {
+      if (this.leaving) return
+      if (!animate) {
+        if (!this.completeIntro()) return
+        this.leaving = true
+        this.navigateToLogin()
         return
       }
+      // Mouse / H5 fallback: press briefly, then release into the dots.
+      this.holdStart()
+      this._shrinkTimer = setTimeout(() => this.release(), 180)
+    },
+    skipIntro() {
+      if (this.leaving) return
+      if (!this.completeIntro()) return
+      this.leaving = true
+      uni.createSelectorQuery().in(this).select('.skip').boundingClientRect(rect => {
+        if (!rect) { this.navigateToLogin(); return }
+        this.originX = rect.left + rect.width / 2
+        this.originY = rect.top + rect.height / 2
+        // The skip label lifts away while sign-in pops out from where it sat.
+        this.skipping = true
+        this._revealTimer = setTimeout(() => { this.showLogin = true }, 70)
+        this._entryTimer = setTimeout(() => this.navigateToLogin(), 980)
+      }).exec()
+    },
+    makeParticles(rect) {
+      const particles = []
+      const shades = ['#6750d9', '#8f7ce8', '#ae9bf0', '#c9bcf5', '#e0d8fb']
+      // Sample the label box so the dissolve reads as the words breaking apart;
+      // sizes run from tiny grains to a few larger beads.
+      for (let row = 0; row < 4; row++) for (let column = 0; column < 18; column++) {
+        const id = row * 18 + column
+        const seed = ((id * 73 + 19) % 101) / 101
+        const x = (column + .5) / 18 * rect.width
+        const y = (row + .5) / 4 * rect.height
+        const angle = Math.atan2(y - rect.height / 2, x - rect.width / 2)
+        const size = 1.6 + seed * seed * 5.5
+        const distance = 46 + seed * 150 + size * 5
+        const wipe = Math.min(1, (x / rect.width) * .88 + (y / rect.height) * .12)
+        particles.push({ id, style: {
+          left: rect.left + x + 'px', top: rect.top + y + 'px', width: size + 'px', height: size + 'px',
+          '--scatter-x': Math.cos(angle) * distance + 'px', '--scatter-y': Math.sin(angle) * distance - 24 + 'px',
+          animationDelay: Math.round(wipe * 150 + seed * 22) + 'ms',
+          backgroundColor: shades[id % shades.length],
+        } })
+      }
+      return particles
+    },
+    navigateToLogin() {
+      uni.reLaunch({ url: '/pages/auth/auth?fromOnboarding=1', fail: () => this.navigationFailed() })
+    },
+    navigationFailed() {
+      clearTimeout(this._revealTimer); clearTimeout(this._entryTimer)
+      this.leaving = false; this.bursting = false; this.showLogin = false; this.pressing = false; this.skipping = false
+      uni.showToast({ title: this.english ? 'Could not open. Please try again.' : '页面打开失败，请重试', icon: 'none' })
+    },
+    openEntry() {
+      if (this.leaving) return
+      this.leaving = true
       uni.reLaunch({
-        url: pendingClaim() ? CLAIM_ROUTE : HOME_URL,
-        fail: () => {
-          if (!completed) {
-            try { uni.removeStorageSync(ONBOARDING_STORAGE_KEY) } catch (_) { /* Still allow retry. */ }
-          }
-          fail(this.english ? 'Could not open. Please try again.' : '页面打开失败，请重试')
-        },
+        url: appEntry(uni, LOGIN_PROVIDER),
+        fail: () => this.navigationFailed(),
       })
     },
   },
@@ -167,119 +227,55 @@ export default {
 </script>
 
 <style scoped>
-@font-face {
-  font-family: 'Palace Welcome';
-  src: url('/static/welcome-summer-palace/palace-welcome-bold.woff2') format('woff2');
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-}
-.welcome {
-  position: relative;
-  width: 100%;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
-  touch-action: none;
-  overscroll-behavior: none;
-  user-select: none;
-  background: #18283b;
-  color: #fff;
-}
-.welcome-photo, .welcome-shade { position: absolute; inset: 0; pointer-events: none; }
-.welcome-photo {
-  background: url('/static/welcome-summer-palace/seventeen-arch-bridge.jpg') 46.5% top / auto 112% no-repeat;
-}
-.welcome-shade {
-  background: linear-gradient(180deg, transparent 39%, rgba(12, 24, 41, .18) 59%, rgba(14, 29, 48, .56) 77%, rgba(13, 28, 48, .88) 100%);
-  transition: background-color 460ms ease;
-}
-.welcome-shade.is-leaving { background-color: rgba(11, 22, 36, .3); }
-.welcome-content {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 8.2%;
-  opacity: 1;
-  transform: translateY(var(--swipe-offset, 0px));
-  transition: transform 230ms cubic-bezier(.19, 1, .35, 1);
-}
-.welcome-content.is-dragging { transition: none; }
-.welcome-content.is-leaving {
-  opacity: 0;
-  transform: translateY(calc(var(--swipe-offset, 0px) - 110px));
-  transition: transform var(--exit-duration) cubic-bezier(.22, .7, .3, 1), opacity var(--exit-duration) ease-in;
-  pointer-events: none;
-}
-.welcome-type {
-  margin-left: 7.2%;
-  width: 79%;
-}
-.welcome-hi {
-  display: block;
-  width: min(43vw, 22vh);
-  height: min(24.5vw, 12.54vh);
-}
-.welcome-line {
-  display: flex;
-  gap: clamp(7px, 2.5vw, 12px);
-  align-items: center;
-  margin-top: min(3.2vw, 1.6vh);
-  white-space: nowrap;
-}
-.welcome-word {
-  flex: none;
-  width: min(39vw, 19vh);
-  height: min(5.85vw, 2.85vh);
-}
-.welcome-destination {
-  font: 700 min(8vw, 4vh)/1.16 'Palace Welcome', 'KaiTi', 'STKaiti', serif;
-}
-.welcome-destination.is-english {
-  font: 800 min(4.6vw, 2.3vh)/1.16 system-ui, sans-serif;
-  letter-spacing: -.04em;
-}
-.welcome-enter {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: max(56px, min(15vw, 7.5vh));
-  margin: max(20px, min(13vw, 6.2vh)) auto 0;
-  padding: 0;
-  border: 0;
-  border-radius: 16px;
-  background: transparent;
-  -webkit-tap-highlight-color: transparent;
-}
-.welcome-enter::after { border: 0; }
-.welcome-enter[disabled] { background: transparent; }
-.welcome-enter:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
-.welcome-enter:active .welcome-chevron { transform: scale(.96); }
-.welcome-arrow {
-  display: flex;
-  animation: welcome-float 2.15s ease-in-out infinite;
-}
-.welcome-chevron {
-  display: block;
-  width: min(11vw, 5.4vh);
-  height: min(12.8vw, 6.28vh);
-}
-.welcome-content.is-dragging .welcome-arrow,
-.welcome-content.is-leaving .welcome-arrow { animation-play-state: paused; }
-@keyframes welcome-float {
-  0%, 100% { transform: translateY(2px); }
-  50% { transform: translateY(-6px); }
-}
-@media (min-aspect-ratio: 1/1) {
-  .welcome-photo { background-size: cover; background-position: center; }
-  .welcome-type { width: min(79%, 53vh); }
-  .welcome-enter { margin-top: 12px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .welcome-arrow { animation: none; }
-  .welcome-content { transform: none; transition: none; }
-  .welcome-content.is-leaving { transform: none; transition: opacity 120ms ease; }
-  .welcome-shade { transition: none; }
-}
+.onboarding{--intro-purple:#6750d9;--intro-purple-soft:#8f7ce8;--intro-ink:#29263b;--intro-muted:#6d687f;position:relative;box-sizing:border-box;width:100%;height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;color:var(--intro-ink);background:linear-gradient(135deg,#eee8ff 0%,#fbfbff 52%,#eef8fc 100%);padding-top:var(--status-bar-height,0px);font-family:var(--app-font-family)}
+.intro-header{flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;gap:20rpx;padding:18rpx 34rpx 0 34rpx;height:94rpx;box-sizing:border-box}
+.lang-switch{width:64rpx;height:64rpx;min-height:0;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.68);border:1rpx solid rgba(255,255,255,.92);box-shadow:0 6rpx 16rpx rgba(103,80,217,.14),inset 0 1rpx 0 rgba(255,255,255,.95);color:var(--intro-purple);font-size:26rpx;letter-spacing:0;-webkit-tap-highlight-color:transparent}
+.lang-switch.is-eng{font-size:19rpx;letter-spacing:0;font-weight:600}
+.lang-switch[disabled]{background:rgba(255,255,255,.68);color:var(--intro-purple)}
+button{font-family:inherit;box-sizing:border-box;margin:0;padding:0;border:0;line-height:1.4;background:transparent}
+button::after{border:0}
+.skip{min-width:92rpx;min-height:88rpx;display:flex;align-items:center;justify-content:center;color:#6b617f;font-size:27rpx;-webkit-tap-highlight-color:transparent}
+.skip[disabled]{background:transparent;color:#6b617f}
+.is-skipping .skip{opacity:0;transform:translateY(-20rpx);transition:transform 260ms cubic-bezier(.3,.8,.3,1),opacity 200ms ease}
+.intro-swiper{flex:1;min-height:0;width:100%}
+.intro-slide{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;padding:10rpx 40rpx 30rpx}
+.illustration-space{position:relative;display:flex;align-items:center;justify-content:center;width:620rpx;height:600rpx;max-height:50%;flex-shrink:1;margin-bottom:34rpx}
+.illustration-halo{position:absolute;width:83%;height:83%;border-radius:50%;background:radial-gradient(ellipse,rgba(208,197,255,.28),rgba(229,225,255,.08) 60%,transparent 72%)}
+.intro-illustration{position:relative;width:100%;height:100%;transform:translateY(12rpx) scale(.96);transition:transform 750ms cubic-bezier(.22,1,.36,1);will-change:transform}
+.is-current .intro-illustration{transform:translateY(0) scale(1)}
+.intro-copy{flex-shrink:0;text-align:center;width:100%;display:flex;flex-direction:column;align-items:center}
+.intro-title{font-size:44rpx;font-weight:700;line-height:1.48;letter-spacing:3rpx;white-space:pre-line}
+.intro-footer{flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:0 68rpx calc(24rpx + env(safe-area-inset-bottom));box-sizing:border-box}
+.pagination{position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:22rpx;height:80rpx}
+.dot-target{width:46rpx;min-height:88rpx;display:flex;align-items:center;justify-content:center}
+.dot-target[disabled]{background:transparent}
+.dot{width:14rpx;height:14rpx;border-radius:50%;background:#d7cfed}
+.active-dot{position:absolute;left:16rpx;top:33rpx;width:14rpx;height:14rpx;border-radius:50%;background:var(--intro-purple-soft);pointer-events:none;will-change:transform;transition:transform 520ms cubic-bezier(.34,1.65,.45,1)}
+.tracking .active-dot{transition:none}
+.cta-space{width:100%;height:100rpx;min-height:48px}
+.cta-float{position:relative;width:100%;animation:ctaFloat 4.6s ease-in-out infinite;will-change:transform}
+.continue-button{position:relative;width:100%;height:100rpx;min-height:48px;border-radius:30rpx;overflow:hidden;background:transparent;border:0;color:var(--intro-purple);font-size:31rpx;font-weight:600;letter-spacing:3rpx;display:flex;align-items:center;justify-content:center;box-shadow:none;transition:transform 180ms cubic-bezier(.3,.8,.35,1);-webkit-tap-highlight-color:transparent}
+.cta-label{position:relative;z-index:2}
+.is-pressing .continue-button{transform:scale(.95)}
+.continue-button[disabled]{opacity:1;color:var(--intro-purple);background:transparent}
+.continue-button{animation:ctaAppear 380ms cubic-bezier(.22,1,.36,1)}
+.is-bursting .continue-button{-webkit-mask-image:linear-gradient(110deg,#000 0%,#000 38%,rgba(0,0,0,0) 58%,rgba(0,0,0,0) 100%);-webkit-mask-size:260% 100%;-webkit-mask-position:100% 0;-webkit-mask-repeat:no-repeat;animation:ctaWipe 260ms cubic-bezier(.4,0,.3,1) forwards;pointer-events:none}
+.is-bursting .cta-float{animation:none}
+@keyframes ctaFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3rpx)}}
+@keyframes ctaWipe{0%{-webkit-mask-position:0% 0;opacity:1}72%{opacity:1}100%{-webkit-mask-position:100% 0;opacity:0}}
+.burst-layer{position:fixed;inset:0;z-index:60;pointer-events:none;overflow:hidden}/* dots scatter above the sign-in reveal */
+.burst-particle{position:absolute;display:block;border-radius:50%;animation:particlePop 620ms cubic-bezier(.12,.65,.25,1) both;will-change:transform,opacity}
+.is-opening .intro-header,.is-opening .intro-swiper,.is-opening .intro-footer{opacity:0;transition:opacity 200ms ease;pointer-events:none}
+.auth-reveal-layer{position:fixed;inset:0;z-index:50;overflow:hidden;background:linear-gradient(135deg,#eee8ff 0%,#fbfbff 52%,#eef8fc 100%);pointer-events:none;animation:loginSpring 850ms linear both;will-change:transform,opacity,border-radius}
+@keyframes ctaAppear{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes particlePop{0%{opacity:1;transform:translate3d(0,0,0) scale(1)}18%{opacity:1}100%{opacity:0;transform:translate3d(var(--scatter-x),var(--scatter-y),0) scale(.05)}}
+@keyframes loginSpring{0%{opacity:0;transform:scale(.1,.045);border-radius:180px}12%{opacity:1}45%{transform:scale(1.045,1.025);border-radius:32px}64%{transform:scale(.985,.99);border-radius:12px}82%{transform:scale(1.007,1.004);border-radius:4px}100%{opacity:1;transform:scale(1);border-radius:0}}
+button:focus-visible{outline:2px solid var(--intro-purple);outline-offset:4px}
+.is-english .intro-title{font-size:39rpx;letter-spacing:0;line-height:1.35}
+
+.is-english .continue-button{letter-spacing:0}
+@media(max-height:700px){.illustration-space{margin-bottom:20rpx}.intro-slide{padding-bottom:8rpx}.intro-title{font-size:40rpx}.intro-description{margin-top:18rpx}.pagination{margin-bottom:10rpx}.intro-footer{padding-bottom:calc(20rpx + env(safe-area-inset-bottom))}}
+@media(orientation:landscape) and (max-height:600px){.intro-header{height:54px;padding-top:0}.intro-slide{flex-direction:row;gap:24px;padding:0 8vw}.illustration-space{width:32vw;height:100%;max-height:100%;margin:0}.intro-copy{width:48%;text-align:left;align-items:flex-start}.intro-title{font-size:25px;letter-spacing:1px;line-height:1.3}.intro-description{font-size:14px;line-height:1.6;margin-top:12px}.intro-footer{padding:0 24px 10px;position:relative}.pagination{height:44px;margin:0}.dot-target{min-height:44px}.active-dot{top:calc(50% - 7rpx)}.cta-space{height:44px;min-height:44px;display:flex;justify-content:center}.continue-button{width:220px;height:44px;min-height:44px;font-size:16px}.skip{font-size:14px;min-height:44px;min-width:48px}}
+@media(prefers-reduced-motion:reduce){.intro-illustration,.active-dot{transition:none}.intro-illustration{transform:none}.continue-button{animation:none}.cta-float{animation:none}.burst-particle{animation:none;opacity:0}.auth-reveal-layer{animation:loginFade 120ms ease both}.is-bursting .continue-button{animation:none;opacity:0;-webkit-mask-image:none}}
+@keyframes loginFade{from{opacity:0}to{opacity:1}}
 </style>

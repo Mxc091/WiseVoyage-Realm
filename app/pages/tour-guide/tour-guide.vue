@@ -7,20 +7,13 @@
 
     <view class="ink-bg"><view class="ink-mountain ink-mt-1"></view><view class="ink-mountain ink-mt-2"></view></view>
 
-    <WanderPlanner v-if="tab==='wander' || wanderHandoff" v-show="tab==='wander'" ref="wander" :routes="routes" :spots="spots" :guides="guides"
-      :loading="loading" :catalog-error="error" @begin="openWanderCompanion" @exit="exitWander" @reload="loadData"
-      @theme-selected="$emit('theme-selected', $event)" />
-    <template v-if="tab!=='wander'">
     <!-- 毛体标题 -->
     <scroll-view scroll-y class="page-scroll" :scroll-top="planningScrollTop" @scroll="onPlanningScroll" :style="viewportH?{height:viewportH+'px'}:null" :show-scrollbar="false">
     <view class="nav header-spacer" aria-hidden="true" :style="{height:statusH+'px'}"></view>
     <view class="planning-header">
-      <button v-if="tab==='personal'" class="planning-back" :disabled="starting||recommending" :aria-label="t('返回选路线')" @tap="wanderHandoff?returnToWander():switchPlanningTab('route')"><text class="iconfont icon-zuoyoujiantou"></text></button>
-      <button v-else-if="embeddedHome" class="planning-back" :aria-label="t('返回首页')" @tap="$emit('home')">
-        <text class="iconfont icon-zuoyoujiantou"></text>
-      </button>
-      <text class="planning-title">{{ t(wanderHandoff?'选择伴游':tab==='route'?'游览路线':'个性化行程') }}</text>
-      <text v-if="!wanderHandoff" class="planning-subtitle">{{ t(tab==='route' ? '选择想去的景点，查看行程后选择数字人' : '确认行程，选择数字人后开始导览') }}</text>
+      <button v-if="tab==='personal'" class="planning-back" :disabled="starting||recommending" :aria-label="t('返回选路线')" @tap="switchPlanningTab('route')"><text class="iconfont icon-zuoyoujiantou"></text></button>
+      <text class="planning-title">{{ t(tab==='route' ? '游览路线' : '个性化行程') }}</text>
+      <text class="planning-subtitle">{{ t(tab==='route' ? '选择想去的景点，查看行程后选择数字人' : '确认行程，选择数字人后开始导览') }}</text>
     </view>
 
     <view class="main" :class="{'itinerary-active':showItinerary}">
@@ -78,11 +71,7 @@
 
       <!-- ===== 个性化 ===== -->
       <view v-show="tab==='personal'">
-        <view v-if="wanderHandoff" class="block companion-summary">
-          <text>{{ wanderHandoff.ids.length }} {{ t('站') }} · {{ wanderHandoff.overview.total_minutes }} {{ t('分钟') }} · {{ wanderHandoff.party }} {{ t('人') }}</text>
-          <text v-if="wanderHandoff.senior || wanderHandoff.child || wanderHandoff.planning.avoid_steps">{{ [wanderHandoff.senior?t('有老人'):'',wanderHandoff.child?t('有儿童'):'',wanderHandoff.planning.avoid_steps?t('避开台阶'):''].filter(Boolean).join(' · ') }}</text>
-        </view>
-        <view v-else class="block">
+        <view class="block">
           <view id="itinerary-planning" class="bl-hd"><view class="bl-dot"></view><text>{{ t('行程规划') }}</text></view>
           <RouteTiming ref="itinerary" v-if="pageReady&&pickedCount" :ids="selectedIds" :spots="spots" :plan="personalPlan" :pace="personalPlan?.pace||'standard'" :details="showItinerary" :disabled="recommending||starting" @open="showItinerary=true" @close="showItinerary=false" @dragging="itineraryDragging=$event" @reorder="reorderSelectedSpots" @remove="toggleSpot" @state="itineraryState=$event" />
           <text v-if="!pickedCount" class="planner-note planner-footnote">{{ t('先在游览路线中选择景点，再到这里拖动排序。') }}</text>
@@ -121,11 +110,7 @@
     </view>
     <view v-if="guidePicker" class="drawer-overlay" @tap="guidePicker=false"><view class="drawer-mask"></view><view class="drawer-panel" @tap.stop=""><view class="dp-hd"><text class="dp-title">{{ t("选择数字人") }}</text><text @tap="guidePicker=false">{{ t("关闭") }}</text></view><view class="guide-grid"><view v-for="g in guides" :key="g.guide_id" class="guide-card" @tap="pickedGuide=g;guidePicker=false"><image v-if="guideImage(g)" :src="guideImage(g)" class="gc-image" mode="aspectFit" /><view class="gc-name">{{ t(g.name) }}</view></view></view></view></view>
     <!-- 主操作：先查看行程，再开始导览。 -->
-    <FloatingTourButton v-if="!wanderHandoff && !showItinerary && ((tab==='route'&&pickedCount>0) || (tab==='personal'&&canStart))" :variant="tab==='route'?'primary':'light'" :label="t(tab==='route'?'查看行程':'开始导览')" :icon="tab==='route'?'→':'▶'" @activate="tab==='route'?goSelectGuide():startTour()" @dragging="tourButtonDragging=$event" />
-
-    <view v-if="tab==='personal' && wanderHandoff" class="companion-footer">
-      <button :disabled="!pickedGuide || starting" @tap="startWanderSession">{{ t(starting?'正在开始导览…':'确认伴游') }}</button>
-    </view>
+    <FloatingTourButton v-if="!showItinerary && ((tab==='route'&&pickedCount>0) || (tab==='personal'&&canStart))" :variant="tab==='route'?'primary':'light'" :label="t(tab==='route'?'查看行程':'开始导览')" :icon="tab==='route'?'→':'▶'" @activate="tab==='route'?goSelectGuide():startTour()" @dragging="tourButtonDragging=$event" />
 
     <!-- 景点详情 -->
     <ScenicSheet v-if="detailSpot" ref="spotSheet" @closed="detailSpot=null">
@@ -159,7 +144,7 @@
     <ScenicSheet v-if="routeDetail" ref="routeSheet" @closed="routeDetail=null">
       <view class="sheet-content route-detail-panel" @tap.stop="">
         <view v-if="routeDetail.cover_image" class="route-detail-background"><image :src="fixImg(routeDetail.cover_image)" class="route-detail-photo" mode="aspectFill" /><view class="route-detail-wash"></view></view>
-
+        
         <view class="dp-hd"><text class="dp-title">{{ t(routeDetail.name) }}</text></view>
         <scroll-view scroll-y :bounces="false" :show-scrollbar="false" class="dp-body" @scroll="$refs.routeSheet.setScroll($event)"><view class="dp-content">
           <view class="rd-tag">{{ (routeDetail.spot_ids||[]).length }}{{ t('个景点 ·') }} {{ routeTotalTime ? routeTotalTime+t('分钟') : t('时长待配置') }}</view>
@@ -194,7 +179,7 @@
       </view>
     </ScenicSheet>
 
-    </template>
+    <!-- TabBar -->
   </view>
 </template>
 
@@ -202,17 +187,14 @@
 import RouteTiming from '../../components/RouteTiming.vue'
 import FloatingTourButton from '../../components/FloatingTourButton.vue'
 import ScenicSheet from '../../components/ScenicSheet.vue'
-import WanderPlanner from '../../components/WanderPlanner.vue'
-import { WANDER_SESSION } from '../../common/wander.js'
 import { selectedOrder, moveStop, previewOptions, roadMap } from '../../common/route-planning.js'
 import { prioritizeSummerPalace } from '../../common/scenic-order.js'
-import { BASE_URL, LOGIN_PROVIDER, assetUrl, isBeijingCity } from '../../common/config.js'
-import { hasAppSession } from '../../common/onboarding.js'
+import { BASE_URL, assetUrl, isBeijingCity } from '../../common/config.js'
 import { wgs84ToGcj02 } from '../../../shared/coordinates.js'
 
 function req(o){
   return new Promise(function(resolve,reject){
-    var url=o.url,token=hasAppSession(LOGIN_PROVIDER)?uni.getStorageSync('token'):''
+    var url=o.url,token=uni.getStorageSync('token')||''
     if(url.indexOf('http')!==0)url=BASE_URL+url
     uni.request({
       url,method:o.method||'GET',data:o.data||{},
@@ -221,7 +203,7 @@ function req(o){
         if(response.statusCode===200){resolve({data:response.data});return}
         var body=response.data||{},error=new Error(typeof body.detail==='string'?body.detail:body.message||'服务暂不可用，请稍后重试')
         error.statusCode=response.statusCode
-        if(response.statusCode===401 && token && uni.getStorageSync('token')===token){
+        if(response.statusCode===401 && (uni.getStorageSync('token')||'')===token){
           uni.removeStorageSync('token')
           uni.removeStorageSync('login_provider')
           uni.reLaunch({url:'/pages/auth/auth?expired=1'})
@@ -239,9 +221,7 @@ var api={
   createSession:function(n,g,p,s,planning){return req({url:'/tour-session/visitor-create?name='+encodeURIComponent(n||'游客')+'&guide_id='+(g||1)+'&visitor_preferences='+encodeURIComponent(p||'')+'&spot_ids='+encodeURIComponent(JSON.stringify(s||[]))+(planning?'&planning='+encodeURIComponent(JSON.stringify(planning)):''),method:'POST'})},
 }
 export default {
-  components:{FloatingTourButton,RouteTiming,ScenicSheet,WanderPlanner},
-  props: { embeddedHome: Boolean },
-  emits: ['home', 'catalog', 'theme-selected'],
+  components:{FloatingTourButton,RouteTiming,ScenicSheet},
   watch:{
     dockHiddenByOverlay:function(v){ uni.$emit('dock:sync',{source:'tour',hide:!!v}) },
   },
@@ -250,11 +230,11 @@ export default {
   },
   data:function(){return{failedImages:{},planningScrollTop:0,routeScrollTop:0,detailScrolled:false,statusH:20,viewportH:0,showMapPreview:false,pageReady:false,pageVisible:false,showItinerary:false,itineraryDragging:false,tourButtonDragging:false,orderedIds:[],starting:false,itineraryState:{key:"",busy:false,error:"",data:null},
     previewWidth:0,previewPixelRatio:1,previewModelStatus:'',previewingGuide:null,tab:'route',routeIndex:0,spots:[],routes:[],guides:[],pickedIds:{},pickedRouteId:null,pickedGuide:null,loading:true,error:'',detailSpot:null,keyword:'',routeDetail:null,themeMap:{comprehensive:'综合游览',history:'历史文化',nature:'自然风光',family:'亲子游览',photography:'摄影打卡'},
-    previewWidth:0,previewPixelRatio:1,previewModelStatus:'',previewingGuide:null,tab:'route',routeIndex:0,spots:[],routes:[],guides:[],pickedIds:{},pickedRouteId:null,pickedGuide:null,loading:true,dataLoaded:false,wanderHandoff:null,error:'',detailSpot:null,keyword:'',routeDetail:null,themeMap:{comprehensive:'综合',history:'历史',nature:'自然',family:'亲子',photography:'摄影'},
+    previewWidth:0,previewPixelRatio:1,previewModelStatus:'',previewingGuide:null,tab:'route',routeIndex:0,spots:[],routes:[],guides:[],pickedIds:{},pickedRouteId:null,pickedGuide:null,loading:true,dataLoaded:false,error:'',detailSpot:null,keyword:'',routeDetail:null,themeMap:{comprehensive:'综合',history:'历史',nature:'自然',family:'亲子',photography:'摄影'},
     mapCenter:{latitude:0,longitude:0},spotCat:'all',guidePicker:false,planningDrafts:{route:null,personal:null},personalPlan:null,recommending:false,budgetIndex:2,budgetOptions:[60,90,120,180,240,360],paceIndex:0,
   }},
   computed:{
-    dockHiddenByOverlay:function(){return !!(this.tab==='wander'||this.wanderHandoff||this.showItinerary||this.routeDetail||this.detailSpot||this.showMapPreview||this.guidePicker||this.previewingGuide)},
+    dockHiddenByOverlay:function(){return !!(this.showItinerary||this.routeDetail||this.detailSpot||this.showMapPreview||this.guidePicker||this.previewingGuide)},
     canStart:function(){return this.pickedCount>0&&!!this.pickedGuide&&!this.recommending&&!this.starting&&this.itineraryState.key===this.itineraryKey&&!this.itineraryState.busy&&!this.itineraryState.error&&!!this.itineraryState.data?.complete},
     selectedIds:function(){return selectedOrder(this.orderedIds,this.pickedIds)},
     itineraryOptions:function(){return previewOptions(this.selectedIds,this.personalPlan,this.personalPlan?.pace||'standard')},
@@ -336,59 +316,20 @@ export default {
       }catch(_){uni.showToast({title:this.t('规划失败，请检查服务'),icon:'none'})}
       finally{this.recommending=false}
     },
-    openDetail:function(s){this.detailScrolled=false;this.detailSpot=s;this.saveHistory(s)},
+    openDetail:function(s){
+  this.saveHistory(s)
+  uni.navigateTo({ url: '/pages/scenic/scenic?spotId=' + s.spot_id })
+},
     onSpotScroll:function(e){this.detailScrolled=(e.detail.scrollTop||0)>24;if(this.$refs.spotSheet)this.$refs.spotSheet.setScroll(e)},
-    saveHistory:function(s){if(!hasAppSession(LOGIN_PROVIDER))return;req({url:'/spot-favorites/history/'+s.spot_id,method:'PUT'}).then(function(r){if(!r.data.success)throw new Error('Save failed')}).catch(function(){uni.showToast({title:'浏览记录保存失败，请检查网络',icon:'none'})})},
+    saveHistory:function(s){req({url:'/spot-favorites/history/'+s.spot_id,method:'PUT'}).then(function(r){if(!r.data.success)throw new Error('Save failed')}).catch(function(){uni.showToast({title:'浏览记录保存失败，请检查网络',icon:'none'})})},
     themeIcon:function(t){var m={comprehensive:'icon-youlan',history:'icon-lishiwenhua',nature:'icon-ziranfengguang',family:'icon-qinzi',photography:'icon-cam-3'};return m[t]||'icon-youlan'},
     switchRoute:function(direction){if(this.routes.length>1)this.routeIndex=(this.routeIndex+direction+this.routes.length)%this.routes.length},
     openRoute:function(r){this.routeDetail=r},
-    openWander(route, featured){
-      this.switchPlanningTab('wander')
-      this.$nextTick(()=>{
-        const planner=this.$refs.wander
-        if(route || featured)planner?.openHomeThemes(route)
-      })
-    },
-    exitWander(){
-      this.switchPlanningTab('route')
-      if(this.embeddedHome)this.$emit('home')
-    },
     goSelectGuide:function(){
       if(!this.pickedCount||this.starting||this.recommending)return
       this.routeDetail=null;this.switchPlanningTab('personal')
     },
-    openWanderCompanion(handoff){
-      this.wanderHandoff=handoff
-      this.pickedGuide=null
-      this.switchPlanningTab('personal')
-    },
-    returnToWander(){
-      if(this.starting)return
-      this.switchPlanningTab('wander')
-      this.wanderHandoff=null
-    },
-    async startWanderSession(){
-      if(this.starting || !this.pickedGuide || !this.wanderHandoff || !this.checkAuth())return
-      this.starting=true
-      const handoff=this.wanderHandoff
-      try {
-        if(!handoff.sessionId) {
-          const preferences=[...handoff.planning.preferences,WANDER_SESSION]
-          if(handoff.senior)preferences.push('app-party-senior')
-          if(handoff.child)preferences.push('app-party-child')
-          if(handoff.blind)preferences.push('app-wander-blind')
-          const {data}=await api.createSession('随心逛',this.pickedGuide.guide_id,preferences.join(','),handoff.ids,handoff.planning)
-          const session=data?.data
-          if(!session?.session_id || data.success===false)throw new Error(data?.message||'创建导览失败，请重试')
-          handoff.sessionId=session.session_id
-          if(session.avatar_access_token)uni.setStorageSync('xingyun-tour-'+session.session_id,session.avatar_access_token)
-        }
-        await new Promise((resolve,reject)=>uni.navigateTo({url:'/pages/tour/tour?sessionId='+handoff.sessionId,success:resolve,fail:reject}))
-      } catch(error) {
-        if(error.statusCode!==401)uni.showToast({title:this.t(error.message||'开始导览失败，请重试'),icon:'none'})
-      } finally { this.starting=false }
-    },
-    startTour:function(){var s=this;if(!s.checkAuth())return;if(!s.pickedCount){uni.showToast({title:'请选择景点',icon:'none'});return}
+    startTour:function(){var s=this;if(!s.pickedCount){uni.showToast({title:'请选择景点',icon:'none'});return}
       if(s.recommending||s.starting)return
       if(s.itineraryState.key!==s.itineraryKey||s.itineraryState.busy||s.itineraryState.error||!s.itineraryState.data?.complete){uni.showToast({title:s.t('请等待可用的路线与用时结果'),icon:'none'});return}
       var ids=s.selectedIds.slice(),gid=s.pickedGuide?s.pickedGuide.guide_id:0
@@ -446,31 +387,26 @@ export default {
         var ordered=prioritizeSummerPalace(s.spots,s.routes);s.spots=ordered.spots;s.routes=ordered.routes
         var located=s.spots.find(function(x){return x.latitude&&x.longitude});if(located){var point=wgs84ToGcj02(Number(located.latitude),Number(located.longitude));s.mapCenter={latitude:point[0],longitude:point[1]}}
         if(gr&&sr&&rr)s.dataLoaded=true
-        if(!gr||!sr||!rr){if(first)s.error='部分数据加载失败，请重试'}
+        var missing=[]
+        if(!gr)missing.push('伴游')
+        if(!sr)missing.push('景点')
+        if(!rr)missing.push('路线')
+        if(missing.length&&first)s.error=missing.join('、')+'加载失败，请检查服务连接后重试'
         // 进入导览页不自动选景点：上一次 AI 推荐留下的暂存直接丢弃。
         s.restoreAISelection()
         s.loading=false
-      }).catch(function(){if(first)s.error='网络连接失败';s.loading=false})
-        .finally(() => s.$emit('catalog', {
-          spots: s.spots, routes: s.routes,
-          error: s.error || (!s.routes.length ? '暂无特色路线' : ''),
-        }))},
+      }).catch(function(){if(first)s.error='网络连接失败';s.loading=false})},
     onMarkerTap:function(e){var id=e.detail&&e.detail.markerId;if(id){this.toggleSpot(id);this.$forceUpdate()}},
-    checkAuth:function(){if(hasAppSession(LOGIN_PROVIDER))return true;uni.navigateTo({url:'/pages/auth/auth'});return false},
+    checkAuth:function(){var t=uni.getStorageSync('token');if(!t){uni.reLaunch({url:'/pages/auth/auth'});return false}return true},
   },
-  onBackPress:function(){if(this.tab==='personal'&&this.wanderHandoff){this.returnToWander();return true}if(this.tab==='wander'){if(!this.$refs.wander?.back())this.exitWander();return true}if(this.showItinerary){this.showItinerary=false;return true}if(this.showMapPreview){this.showMapPreview=false;return true}if(this.tab==='personal'){this.switchPlanningTab('route');return true}},
+  onBackPress:function(){if(this.showItinerary){this.showItinerary=false;return true}if(this.showMapPreview){this.showMapPreview=false;return true}if(this.tab==='personal'){this.switchPlanningTab('route');return true}},
   onHide:function(){this.tourButtonDragging=false;this.itineraryDragging=false;this.showItinerary=false;this.pageVisible=false;this.showMapPreview=false},
   onUnload:function(){this.itineraryDragging=false;this.pageVisible=false;this.pageReady=false},
-  onShow:function(){this.pageVisible=true;this.showMapPreview=false;this.loadData()},
+  onShow:function(){this.pageVisible=true;this.showMapPreview=false;if(this.checkAuth())this.loadData()},
 }
 </script>
 
 <style scoped>
-.companion-summary{display:grid;gap:7px;padding:16px;font-size:15px}
-.companion-footer{position:absolute;inset:auto 0 0;z-index:12;padding:12px 20px calc(12px + env(safe-area-inset-bottom));background:#f5f1fa}
-.companion-footer button{min-height:50px;border-radius:16px;background:#6952b3;color:#fff;font:400 16px/1.5 var(--app-font-family)}
-.companion-footer button[disabled]{opacity:.44}
-
 .planning-header{position:relative;z-index:1;padding:16rpx 120rpx 28rpx;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12rpx}
 .planning-title{text-align:center;font-size:40rpx;font-weight:700;color:var(--ng-text)}
 .planning-subtitle{text-align:center;font-size:25rpx;line-height:1.5;color:var(--ng-secondary)}

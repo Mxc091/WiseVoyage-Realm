@@ -13,8 +13,8 @@
   </view>
 </template>
 <script>
-const MUTED = [117, 107, 135]
-const INK = [101, 71, 173]
+const MUTED = [75, 85, 99]
+const INK = [31, 41, 55]
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
 export default {
   name: 'TabDock',
@@ -28,8 +28,8 @@ export default {
   data() {
     return {
       tabs: [
-        { key: 'tour', icon: 'icon-home', label: '首页' },
-        { key: 'ai', icon: 'icon-aishuziren', label: 'AI导游' },
+        { key: 'tour', icon: 'icon-daolan', label: '智能导览' },
+        { key: 'ai', icon: 'icon-aishuziren', label: 'AI小导游' },
         { key: 'mine', icon: 'icon-wode1', label: '我的' },
       ],
     }
@@ -67,14 +67,14 @@ export default {
 }
 </script>
 <style scoped>
-.dock{--app-font-family:'Source Han Park','Noto Sans CJK SC',sans-serif;font-family:var(--app-font-family);font-weight:400;border-radius:24px 24px 0 0;position:fixed;bottom:0;left:0;right:0;z-index:999;background:var(--ng-surface);border-top:1rpx solid var(--ng-border);will-change:transform,opacity;transform-origin:50% 100%;transition:transform .22s ease,opacity .22s ease}
+.dock{position:fixed;bottom:0;left:0;right:0;z-index:999;background:var(--ng-surface);border-top:1rpx solid var(--ng-border);will-change:transform,opacity;transform-origin:50% 100%;transition:transform .22s ease,opacity .22s ease}
 .dock-inner{position:relative;display:flex;align-items:stretch;padding:6px;min-height:64px;box-sizing:border-box}
 .dock-pill{position:absolute;top:2px;bottom:2px;left:6px;width:calc((100% - 12px)/3);box-sizing:border-box;border:0;border-radius:30px;background:var(--ng-raised);pointer-events:none;will-change:transform;transition:transform .26s cubic-bezier(.22,.61,.36,1)}
 .dock-item{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:50px;gap:3px;padding:0;background:transparent}
 .dock-icon{font-size:26px;line-height:1.15;transition:transform .26s ease,color .26s ease}
 .dock-label-wrap{position:relative;width:100%;min-height:22px;display:flex;align-items:center;justify-content:center}
 .dock-label{transition:color .26s ease;display:block;max-width:100%;font-size:13px;line-height:1.3;white-space:normal;letter-spacing:0;text-align:center}
-.dock-item.on .dock-label{font-weight:400}
+.dock-item.on .dock-label{font-weight:700}
 .dock-safe{height:env(safe-area-inset-bottom);min-height:0}
 @media(prefers-reduced-motion:reduce){.dock,.dock-pill,.dock-icon,.dock-label{transition:none}}
 </style>

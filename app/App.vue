@@ -1,6 +1,6 @@
 <script>
 import { LOGIN_PROVIDER } from './common/config.js'
-import { HOME_ROUTE, ONBOARDING_STORAGE_KEY, ONBOARDING_ROUTE, hasAppSession } from './common/onboarding.js'
+import { ONBOARDING_STORAGE_KEY, ONBOARDING_ROUTE } from './common/onboarding.js'
 import { CLAIM_ROUTE, clearPendingClaim, saveClaim } from './common/station-claim.js'
 export default {
   onLaunch: function() {
@@ -16,6 +16,7 @@ export default {
       try { saveClaim(args); incomingClaim = true } catch (_) { /* Ordinary launches have no claim. */ }
     }
     // #endif
+    var token = uni.getStorageSync('token')
     var pages = getCurrentPages()
     var currentPage = ''
     if (pages && pages.length) {
@@ -25,16 +26,13 @@ export default {
       if (currentPage && currentPage !== ONBOARDING_ROUTE) uni.reLaunch({ url: '/' + ONBOARDING_ROUTE })
       return
     }
-    if (!currentPage) return
     if (currentPage === ONBOARDING_ROUTE) return
     if (currentPage === CLAIM_ROUTE.slice(1)) return
     if (incomingClaim && currentPage.indexOf('pages/auth/auth') === -1) {
       uni.reLaunch({ url: CLAIM_ROUTE })
       return
     }
-    // The home tab can load the public catalog without a session.
-    if (currentPage === HOME_ROUTE) return
-    if (!hasAppSession(LOGIN_PROVIDER) && currentPage.indexOf('pages/auth/auth') === -1) {
+    if ((!token || uni.getStorageSync('login_provider') !== LOGIN_PROVIDER) && currentPage.indexOf('pages/auth/auth') === -1) {
       // A scanned-route page can be opening sign-in at the same time during a cold launch.
       uni.reLaunch({ url: '/pages/auth/auth', fail: err => console.warn('Sign-in navigation already in progress', err.errMsg || '') })
     }
@@ -46,14 +44,7 @@ export default {
 @import "./common/soft-ui.css";
 @import url("/static/iconfont/iconfont-inline.css");
 @import "./common/icons.css";
-@font-face {
-  font-family:"Source Han Sans CN";
-  src:url("/static/fonts/SourceHanSansCN-Regular.woff2") format("woff2");
-  font-weight:400;
-  font-style:normal;
-  font-display:swap;
-}
-page { background:var(--ng-night); color:var(--ng-text); font-family:var(--app-font-family); font-synthesis:none; }
+page { background:var(--ng-night); color:var(--ng-text); font-family:var(--app-font-family); }
 .page { background:var(--ng-night); color:var(--ng-text); }
 .page .nav { border-color:var(--ng-border); }
 .page .card,.page .menu-group,.page .profile-card,.page .map-card,.page .rank-block,.page .block { background:var(--ng-surface); border-color:var(--ng-border); border-radius:24rpx; }
@@ -74,7 +65,7 @@ page { background:var(--ng-night); color:var(--ng-text); font-family:var(--app-f
 .page .msg-bubble.user { background:rgba(99,102,241,0.18); color:var(--ng-text); }
 .aurora-page{background:transparent!important;color:var(--ng-text)}
 .aurora-background{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:linear-gradient(145deg,var(--ng-surface) 0%,var(--ng-surface) 35%,var(--ng-surface) 70%,var(--ng-surface) 100%)}
-.aurora-page>view:not(.aurora-background):not(.tb-root):not(.bottom-fixed):not(.drawer-overlay):not(.scenic-sheet-overlay):not(.confirm-overlay):not(.spot-drawer):not(.fab-btn):not(.photo-popover-mask):not(.select-overlay):not(.login-reveal):not(.voice-render):not(.about-overlay):not(.wander-planner):not(.companion-footer){position:relative;z-index:1}
+.aurora-page>view:not(.aurora-background):not(.tb-root):not(.bottom-fixed):not(.drawer-overlay):not(.scenic-sheet-overlay):not(.confirm-overlay):not(.spot-drawer):not(.fab-btn):not(.photo-popover-mask):not(.select-overlay):not(.login-reveal):not(.voice-render):not(.about-overlay){position:relative;z-index:1}
 .aurora-page .nav{background:transparent!important;border-bottom-color:var(--ng-border)!important;gap:18rpx}
 .aurora-page .nav-title{color:var(--ng-text)}
 .aurora-page .tb-root{position:fixed!important;background:var(--ng-surface)!important;border-top-color:var(--ng-border)!important}
@@ -109,4 +100,6 @@ page{--app-page-gradient:linear-gradient(135deg,#eee8ff 0%,#fbfbff 52%,#eef8fc 1
 page .page .aurora-background{background:var(--app-page-gradient)!important;background-size:100vw 100vh!important;background-position:0 0!important;background-repeat:no-repeat!important}
 .page.aurora-page > .app-status-bar-shield{position:fixed!important;top:0;left:0;right:0;height:var(--status-bar-height);z-index:10000!important;background:var(--app-page-gradient);background-size:100vw 100vh;background-position:0 0;background-repeat:no-repeat;pointer-events:none}
 /* #endif */
+/* 全局统一返回箭头 */
+.app-back-icon{width:40rpx;height:40rpx;background-color:#282332;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 12H5M11 6l-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 12H5M11 6l-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat}
 </style>

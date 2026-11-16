@@ -80,7 +80,19 @@ def _step_alternative(base, selected, options, budget):
                  stairs_saved=original_steps-stairs, extra_minutes=variant['total_minutes']-route['total_minutes'])]
 
 
-def _check_walk_connections(start, end, selected, avoid_steps, english):
+class StationRouteConflict(ValueError):
+    """The requested journey conflicts with walking connectivity or its time budget."""
+
+
+class StationBudgetConflict(StationRouteConflict):
+    def __init__(self, route, budget, english):
+        self.route = route
+        minutes = route['total_minutes']
+        super().__init__(f'The selected stops need {minutes} minutes, {minutes-budget} more than the {budget}-minute budget.'
+                         if english else f'按当前步速，游览全部已选景点并到达终点预计需要 {minutes} 分钟，比 {budget} 分钟预算多 {minutes-budget} 分钟。')
+
+
+def _check_walk_connections(start, end, selected, avoid_steps, english, allow_relaxation=True):
     """On this undirected graph, all required stops and the exit must be reachable from the start."""
     def label(anchor):
         name = anchor['label']
@@ -119,12 +131,12 @@ def _check_walk_connections(start, end, selected, avoid_steps, english):
         if near_exit:
             lines.append(f'{near_exit} connects to {label(end)}, but this section is disconnected from the start.'
                          if english else f'{near_exit}与{label(end)}之间可以步行，但起点无法接入这一段。')
-    if stairs and not disconnected:
+    if stairs and not disconnected and allow_relaxation:
         lines.append('If stairs are suitable, turn off “Avoid marked steps” to keep all stops and the exit.'
                      if english else '如果可以走台阶，取消“避开路网已标注的台阶”即可保留全部选点和终点，再按原预算重算。')
     lines.append('To keep the walking restrictions, change the unreachable destinations. More time or a different order cannot connect these sections.'
                  if english else '若保留当前通行条件，请调整上面列出的不可达目的地。增加游览时间或调换顺序都无法连通这些路段。')
-    raise ValueError('\n'.join(lines))
+    raise StationRouteConflict('\n'.join(lines))
 
 
 def plan_walk(station, spots, preferences):
@@ -150,6 +162,11 @@ def plan_walk(station, spots, preferences):
         raise ValueError('同一景点不能同时设为必去和跳过')
     allowed = [dict(s, visit_duration=dwell.get(s['spot_id'], s.get('visit_duration')))
                for s in allowed if s['spot_id'] not in skipped]
+    profile = preferences.get('personalization') or {}
+    priority = {int(key): 1 / (1 + index * .2) for index, key in enumerate(profile.get('matches', {}))}
+    related = set(priority) - set(requested) if profile.get('related_stops') else set()
+    if requested and related and not preferences.get('fill_time'):
+        allowed = [s for s in allowed if s['spot_id'] in requested or s['spot_id'] in related]
     seed = []
     if requested:
         lookup = {s['spot_id']: s for s in allowed}
@@ -158,14 +175,15 @@ def plan_walk(station, spots, preferences):
         selected = [lookup[s] for s in requested]
     else:
         selected = []
-    _check_walk_connections(start, end, selected, options['avoid_steps'], preferences.get('language') == 'en')
+    _check_walk_connections(start, end, selected, options['avoid_steps'], preferences.get('language') == 'en',
+                            preferences.get('compare_with_steps', True))
     if selected:
         route = (optimize_order(selected, fixed_start=False, **options)['proposed_route']
                  if len(selected) > 1 else route_overview(selected, **options))
         if not route['complete']: raise ValueError('没有找到完整的步行路线，请调整景点或少台阶选项')
         if route['total_minutes'] > budget:
-            raise ValueError('已选景点超出时间预算，请增加时间或减少景点；系统会保留您的选择')
-        if not preferences.get('fill_time'):
+            raise StationBudgetConflict(route, budget, preferences.get('language') == 'en')
+        if not preferences.get('fill_time') and not related:
             base = dict(kind='custom', title='自选景点顺路方案', title_en='Your selected stops', route=route)
             ordered = [lookup[s['spot_id']] for s in route['stops']]
             return [base, *_step_alternative(base, ordered, options, budget)]
@@ -191,7 +209,7 @@ def plan_walk(station, spots, preferences):
     def benefit(stops):
         # Concavity reduces the marginal gain of repeatedly covering one theme.
         return sum(weights.get(t, 0) * math.sqrt(sum(profiles[i].get(t, 0) for i in stops))
-                   for t in themes) / weight_sum
+                   for t in themes) / weight_sum + 4 * math.sqrt(sum(priority.get(allowed[i]['spot_id'], 0) for i in stops))
 
     def evaluate(path):
         legs = [entry[path[0]], *(edges[a][b] for a, b in zip(path, path[1:])), exits[path[-1]]]
@@ -228,9 +246,13 @@ def plan_walk(station, spots, preferences):
 
     options_found = [(benefit(k), v) for k, v in pool.items() if v]
     if not options_found:
-        raise ValueError('当前时间不足以完成本站出发并到达终点的游览，请增加时间或更换终点')
+        raise StationRouteConflict('当前时间不足以完成本站出发并到达终点的游览，请增加时间或更换终点')
     best = min(options_found, key=lambda x: (-x[0], x[1]))
-    choices = [('balanced', '兴趣优先', 'Interest match', best)]
+    if profile.get('less_walking'):
+        best = min((v for v in options_found if v[0] >= .8 * best[0]),
+                   key=lambda v: (v[1][1], -v[0], v[1][0]))
+    choices = [('personal', '按您的需求推荐', 'Your personalized route', best)] if profile else [
+        ('balanced', '兴趣优先', 'Interest match', best)]
     # Compare distance only among plans retaining at least 85% of the best found benefit.
     shorter = min((v for v in options_found if v[0] >= .85 * best[0] and v[1][0] <= best[1][0]),
                   key=lambda x: (x[1][1], -x[0], x[1][0]))

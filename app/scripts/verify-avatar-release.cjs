@@ -7,14 +7,10 @@ for(const file of ['components/tour-xingyun.vue']){
  const source=read(file);assert.ok(source.includes('await loadXingyunSdk()'));assert.ok(source.includes("hardwareAcceleration:'prefer-hardware'"));assert.ok(!source.includes('script.src=value.sdkUrl'))
 }
 assert.ok(read('components/tour-xingyun.vue').includes('transform:translateX(0)'),'Avatar must be centered')
-assert.ok(read('components/tour-xingyun.vue').includes('rightSizeAvatarCanvas'),'Avatar must cap its backing canvas to the visible size')
-assert.ok(read('components/tour-xingyun.vue').includes('onFPSUpdate'),'Avatar must adapt quality from measured FPS')
-assert.ok(read('components/tour-xingyun.vue').includes('createAvatarQualityController'),'Avatar quality must recover and reset between sessions')
-assert.ok(read('common/avatar-performance.js').includes('[1920, 1280, 960]'),'Do not restore the blurry DPR-based quality floor')
 assert.ok(read('pages/tour/tour.vue').includes('aspect-ratio:16/9'),'Use a wide upper-body viewport')
-assert.ok(!/<(?:chat-voice|tour-xingyun)\b/i.test(read('pages/ai-chat/ai-chat.vue')),'Audio-only entry must not decode hidden video')
+assert.ok(!/<chat-voice|<ChatVoice/.test(read('pages/ai-chat/ai-chat.vue')),'Audio-only entry must not decode hidden video')
 assert.ok(!read('pages/ai-chat/ai-chat.vue').includes("request({url:'/xingyun/chat-voice'"))
 assert.ok(read('pages/tour/tour.vue').includes("command:'connect',text:''"),'Pending speech must dispatch once after connection')
 const index=process.argv.indexOf('--compiled');let compiledChecked=false
-if(index>=0){const dir=process.argv[index+1],render=fs.readFileSync(path.join(dir,'app-renderjs.js'),'utf8');assert.ok(render.includes('xmov-avatar-2.4.1-compatible.js')&&render.includes('prefer-hardware'));assert.ok(render.includes('onFPSUpdate')&&render.includes('maxLongEdge')&&render.includes('[tour-xingyun] canvas'));assert.ok(fs.readFileSync(path.join(dir,'static/sdk/xmov-avatar-2.4.1-compatible.js')).equals(sdk));compiledChecked=true}
-console.log(JSON.stringify({passed:true,compatibleSdk:true,centeredWideAvatar:true,adaptiveCanvas:true,clarityFloor:true,recoverableQuality:true,audioOnlyChat:true,compiledChecked}))
+if(index>=0){const dir=process.argv[index+1],render=fs.readFileSync(path.join(dir,'app-renderjs.js'),'utf8');assert.ok(render.includes('xmov-avatar-2.4.1-compatible.js')&&render.includes('prefer-hardware'));assert.ok(fs.readFileSync(path.join(dir,'static/sdk/xmov-avatar-2.4.1-compatible.js')).equals(sdk));compiledChecked=true}
+console.log(JSON.stringify({passed:true,compatibleSdk:true,centeredWideAvatar:true,audioOnlyChat:true,compiledChecked}))

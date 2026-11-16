@@ -62,25 +62,6 @@ export function roadMap(overview) {
   const points = polyline.flatMap(line => line.points).concat(markers.map(m => ({ latitude: m.latitude, longitude: m.longitude })))
   return { markers, polyline, points, legIndexes, center: points[0] || { latitude: 39.997, longitude: 116.269 } }
 }
-export function routeMapLabels(overview, t, { hideSpotNames = false, hideExit = false } = {}) {
-  const labels = {}
-  if (overview?.entry_anchor?.label) labels[1001] = t(overview.entry_anchor.label)
-  if (!hideExit && overview?.exit_anchor?.label) labels[1002] = t(overview.exit_anchor.label)
-  const stops = overview?.stops || []
-  stops.forEach((stop, index) => {
-    if (!hideSpotNames && !stop.spot_name) return
-    const lines = []
-    if (Number.isFinite(stop.access_latitude) && Number.isFinite(stop.access_longitude)) {
-      const access = !hideSpotNames && stop.access_label && stop.access_label !== stop.spot_name ? stop.access_label : '步行接入点'
-      lines.push(t(access))
-    }
-    if (Number.isFinite(stop.visit_minutes) && stop.visit_minutes > 0) {
-      lines.push(t('预计停留 {minutes} 分钟', { minutes: stop.visit_minutes }))
-    }
-    labels[index + 1] = { name: hideSpotNames ? t('第 {number} 站', { number: index + 1 }) : t(stop.spot_name), lines }
-  })
-  return labels
-}
 export function routeChangeText(message) {
   return String(message || '').replace(/(?:不要|不用|不想|别)\s*(?:跳过|离园|少走|避开)|(?:do not|don't|don’t)\s+(?:skip|leave|avoid)|not tired/gi, '')
 }

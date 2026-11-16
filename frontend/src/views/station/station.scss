@@ -2191,3 +2191,20 @@ body:has(.station-receive),
   .walking-route-passages li { min-height: 30px; padding: 3px 0 3px 14px; font-size: 18px; gap: 8px; }
   .walking-route-expand { margin: 0 0 6px 30px; font-size: 18px; padding: 4px 0; }
 }
+.station-party-toggle { margin: 12px 0; }
+.station-member, .station-strict-setting { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.station-strict-setting { margin-top: 8px; }
+.station-member { padding: 12px 0; border-top: 1px solid #e0e4f0; }
+.station-member label { display: grid; gap: 4px; flex: 1 1 145px; }
+.station-member select { min-height: 44px; color: inherit; background: white; font: inherit; padding: 5px 10px; border: 1px solid #bac6dc; border-radius: 10px; }
+.station-adjustments { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; margin: 12px 0; }
+.station-adjustments article { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: #f8f8ff; border: 1px solid #d9daf9; border-radius: 16px; }
+.station-adjustments h3, .station-adjustments p, .station-party-outcome p { margin: 0; }
+.station-adjustments strong { font-variant-numeric: tabular-nums; }
+.station-adjustments button { margin-top: auto; align-self: start; }
+.station-party-outcome p { padding: 5px 0; }
+.station-extra-request { display: grid; gap: 10px; margin: 18px 0; }
+.station-extra-request textarea { box-sizing: border-box; width: 100%; resize: vertical; min-height: 76px; padding: 12px 14px; border: 1px solid #bac6dc; border-radius: 12px; color: inherit; background: white; font: inherit; line-height: 1.5; }
+.station-extra-request textarea:focus-visible { outline: 2px solid #6259e8; outline-offset: 2px; }
+.station-personal-result p, .station-personal-result li { overflow-wrap: anywhere; margin-block: 6px; }
+.station-personal-result ul { padding-inline-start: 1.2em; }

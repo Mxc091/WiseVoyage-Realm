@@ -12,7 +12,7 @@
   </view>
 </template>
 <script>
-import { roadMap, routeMapLabels } from '../common/route-planning.js'
+import { roadMap } from '../common/route-planning.js'
 import RouteRoadMap from './RouteRoadMap.vue'
 export default {
   components:{RouteRoadMap},props:{overview:Object,compare:Object,currentId:Number,showMap:{type:Boolean,default:true}},data(){return{original:false,activeLeg:0}},
@@ -20,7 +20,7 @@ export default {
     displayed(){return this.original&&this.compare?this.compare:this.overview},mapData(){return roadMap(this.displayed)},
     legs(){const o=this.displayed;return o?[o.entry_leg,...(o.legs||[]),o.exit_leg].filter(Boolean):[]},selectedLeg(){return this.legs[this.activeLeg]},
     currentMarker(){const index=this.displayed?.stops?.findIndex(s=>s.spot_id===this.currentId);return index>=0?index+1:0},
-    markerLabels(){return routeMapLabels(this.displayed,this.t)},
+    markerLabels(){const labels={};(this.displayed?.stops||[]).forEach((s,i)=>{labels[i+1]=this.t(s.spot_name)+' · '+this.t('步行接入点')});if(this.displayed?.entry_anchor)labels[1001]=this.t(this.displayed.entry_anchor.label);if(this.displayed?.exit_anchor)labels[1002]=this.t(this.displayed.exit_anchor.label);return labels},
   },
   watch:{overview(){this.original=false;this.resetLeg()},displayed(){this.resetLeg()},currentId(){this.resetLeg()}},
   mounted(){this.resetLeg()},methods:{distance(n){return n==null?'—':n>=1000?(n/1000).toFixed(2)+'km':n+'m'},resetLeg(){const index=this.legs.findIndex(leg=>leg.from_id===this.currentId);this.activeLeg=index>=0?index:0}},

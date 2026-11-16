@@ -6,17 +6,26 @@ const vm = require('node:vm')
 const root = path.resolve(__dirname, '..')
 
 function harness(file, initial = {}, route = '') {
-  const storage = { ...initial }, navigation = [], toasts = [], timers = []
-  const context = { console, LOGIN_PROVIDER: 'password', LANGUAGE_STORAGE_KEY: 'language',
+  const storage = { ...initial }, navigation = [], toasts = [], timers = [], requests = []
+  const context = { console, LOGIN_PROVIDER: 'password', LANGUAGE_STORAGE_KEY: 'language', AuthPage: {}, BrandLogo: {},
+    APP_LOGIN: true, DEVELOPMENT_LOGIN: false, BASE_URL: '/api/v1', translateTour: value => value,
     setTimeout: (fn, delay) => { const timer = { fn, delay, cancelled: false }; timers.push(timer); return timer },
     clearTimeout: timer => { if (timer) timer.cancelled = true },
     getCurrentPages: () => route ? [{ route }] : [],
     uni: {
       getStorageSync: key => storage[key],
       setStorageSync: (key, value) => { storage[key] = value },
-      removeStorageSync: key => { delete storage[key] },
       reLaunch: options => navigation.push(options),
       showToast: options => toasts.push(options),
+      request: options => requests.push(options),
+      getSystemInfoSync: () => ({ windowWidth: 375, windowHeight: 812 }),
+      createSelectorQuery: () => {
+        const query = { in: () => query, select: () => query,
+          boundingClientRect: callback => { query.callback = callback; return query },
+          exec: () => query.callback({ left: 40, top: 700, width: 300, height: 48 }),
+        }
+        return query
+      },
     },
   }
   vm.createContext(context)
@@ -29,7 +38,7 @@ function harness(file, initial = {}, route = '') {
   const state = options.data ? options.data() : {}
   for (const [key, fn] of Object.entries(options.methods || {})) state[key] = fn.bind(state)
   for (const [key, fn] of Object.entries(options.computed || {})) Object.defineProperty(state, key, { get: () => fn.call(state) })
-  return { context, options, state, storage, navigation, toasts, timers }
+  return { context, options, state, storage, navigation, toasts, timers, requests }
 }
 
 test('first launch is visible before authentication, including resumed old routes', () => {
@@ -43,86 +52,155 @@ test('first launch is visible before authentication, including resumed old route
   }
 })
 
-const page = 'pages/onboarding/onboarding.vue'
-const key = 'zhiyou.onboarding.v1.completed'
-const home = '/pages/tabs/tabs?tab=tour'
-const finger = (x, y, id = 1) => ({ clientX: x, clientY: y, identifier: id })
-function swipe(s, end) {
-  s.startSwipe({ touches: [finger(180, 680)] })
-  s.moveSwipe({ touches: [end] })
-  s.endSwipe({ changedTouches: [end] })
-}
-
-test('an upward swipe moves the content and enters the real home once after the exit', () => {
-  const h = harness(page)
-  const s = h.state
-  s.startSwipe({ touches: [finger(180, 680)] })
-  s.moveSwipe({ touches: [finger(185, 580)] })
-  assert.equal(s.dragging, true)
-  assert.ok(s.offset < 0)
-  s.endSwipe({ changedTouches: [finger(185, 580)] })
-  s.beginEntry()
-  assert.equal(s.leaving, true)
+test('indicator follows both directions during the actual swipe and settles to the selected page', () => {
+  const h = harness('pages/onboarding/onboarding.vue')
+  h.options.onLoad.call(h.state)
+  h.state.onTouchStart()
+  h.state.onTransition({ detail: { dx: 187.5 } })
+  assert.equal(h.state.progress, .5)
+  assert.match(h.state.indicatorStyle.transform, /translate3d\(11.5px/)
+  h.state.onTouchEnd()
+  h.state.onChange({ detail: { current: 1 } })
+  assert.equal(h.state.current, 1)
+  assert.equal(h.state.progress, 1)
+  h.state.onAnimationFinish({ detail: { current: 1 } })
+  h.state.onTouchStart()
+  h.state.onTransition({ detail: { dx: -187.5 } })
+  assert.equal(h.state.progress, .5)
+  h.state.onTouchEnd()
+  h.state.onAnimationFinish({ detail: { current: 0 } })
+  assert.equal(h.state.progress, 0)
+  assert.equal(Object.keys(h.storage).length, 0)
+  h.state.selectSlide(2)
+  assert.equal(h.state.current, 2)
+  assert.equal(h.state.progress, 2)
   assert.equal(h.navigation.length, 0)
-  assert.equal(h.timers.length, 1)
-  const target = {}
-  s.finishTransition({ target, currentTarget: target, propertyName: 'opacity' })
-  h.timers[0].fn()
+})
+
+test('holding shrinks the rounded button, releasing dissolves it into dots, then sign-in', () => {
+  const h = harness('pages/onboarding/onboarding.vue', { token: 'existing', login_provider: 'password' })
+  h.state.holdStart()
+  assert.equal(h.state.pressing, true, 'the button shrinks while the finger is down')
+  assert.equal(h.state.bursting, false, 'nothing scatters before the finger is lifted')
+  assert.equal(h.state.leaving, false)
+  h.state.holdEnd()
+  assert.equal(h.storage['zhiyou.onboarding.v1.completed'], true)
+  assert.equal(h.state.pressing, false)
+  assert.equal(h.state.bursting, true)
+  assert.equal(h.state.particles.length, 72, '18 x 4 dots cover the label box, not the whole pill')
+  const sizes = new Set(h.state.particles.map(p => p.style.width))
+  assert.ok(sizes.size > 8, 'the dots run from small grains to a few larger beads')
+  const colors = new Set(h.state.particles.map(p => p.style.backgroundColor))
+  assert.equal(colors.size, 5, 'purple, light purple and pale purple dots')
+  assert.equal(h.state.originX, 190)
+  assert.equal(h.state.originY, 724)
+  assert.equal(h.state.showLogin, false, 'sign-in appears only after the dots are released')
+  h.state.holdStart()
+  h.state.finish(true)
+  assert.equal(h.timers.length, 2, 'the synthesized tap after touchend cannot start a second run')
+  h.timers.find(t => t.delay === 320).fn()
+  assert.equal(h.state.showLogin, true)
+  h.timers.find(t => t.delay === 1350).fn()
   assert.equal(h.navigation.length, 1)
-  assert.equal(h.navigation[0].url, home)
-  assert.equal(h.storage[key], true)
+  assert.equal(h.navigation[0].url, '/pages/auth/auth?fromOnboarding=1')
+  assert.equal(h.storage.token, 'existing')
 })
 
-test('short, horizontal, downward, and multi-touch gestures do not open home', () => {
-  const h = harness(page)
-  const s = h.state
-  for (const touch of [finger(182, 642), finger(20, 610), finger(181, 770), finger(180, 560, 2)]) {
-    swipe(s, touch)
-    assert.equal(s.offset, 0)
-  }
-  s.startSwipe({ touches: [finger(180, 680), finger(240, 700, 2)] })
-  s.endSwipe({ changedTouches: [finger(180, 580)] })
-  assert.equal(h.timers.length, 0)
-  assert.equal(h.storage[key], undefined)
+test('click fallback presses briefly, then releases into the dots', () => {
+  const h = harness('pages/onboarding/onboarding.vue')
+  h.state.finish(true)
+  assert.equal(h.state.pressing, true)
+  assert.equal(h.state.bursting, false)
+  h.timers.find(t => t.delay === 180).fn()
+  assert.equal(h.state.pressing, false)
+  assert.equal(h.state.bursting, true)
+  assert.equal(h.state.particles.length, 72)
+  assert.equal(h.state.leaving, true)
 })
 
-test('arrow fallback, returning users, and pending station claims resolve the appropriate entry', () => {
-  const guest = harness(page)
-  guest.state.beginEntry()
-  guest.timers[0].fn()
-  assert.equal(guest.navigation[0].url, home)
-  const returning = harness(page, { [key]: true, token: 'existing', login_provider: 'password', language: 'en' })
-  returning.options.onLoad.call(returning.state)
-  assert.equal(returning.navigation[0].url, home)
-  assert.equal(returning.storage.token, 'existing')
-  assert.equal(returning.state.english, true)
-  const claim = harness(page, { 'station-pending-claim': { token: 'saved' } })
-  claim.state.beginEntry()
-  claim.timers[0].fn()
-  assert.equal(claim.navigation[0].url, '/pages/claim/claim')
+test('the welcome page switches between Chinese and English copy in place', () => {
+  const h = harness('pages/onboarding/onboarding.vue')
+  h.options.onLoad.call(h.state)
+  assert.equal(h.state.english, false)
+  assert.equal(h.state.slides[0].title, '想去哪里\n就从这里出发')
+  h.state.setLanguage('en')
+  assert.equal(h.state.english, true)
+  assert.equal(h.storage.language, 'en')
+  assert.equal(h.state.slides[0].title, 'Your places.\nYour own journey.')
+  h.state.setLanguage('zh')
+  assert.equal(h.state.english, false)
+  assert.equal(h.storage.language, 'zh')
+  assert.equal(h.state.slides[2].title, '旅途有疑问\n随时问小导游')
+  h.state.toggleLanguage()
+  assert.equal(h.state.english, true)
+  assert.equal(h.storage.language, 'en')
+  assert.equal(h.state.slides[0].title, 'Your places.\nYour own journey.')
+  h.state.toggleLanguage()
+  assert.equal(h.state.english, false)
+  assert.equal(h.storage.language, 'zh')
+  assert.equal(h.state.slides[0].title, '想去哪里\n就从这里出发')
 })
 
-test('returning guests may open home while other App pages still check sign-in', () => {
-  const guest = harness('App.vue', { [key]: true }, 'pages/tabs/tabs')
-  guest.options.onShow.call(guest.state)
-  assert.equal(guest.navigation.length, 0)
-  const protectedPage = harness('App.vue', { [key]: true }, 'pages/tour/tour')
-  protectedPage.options.onShow.call(protectedPage.state)
-  assert.equal(protectedPage.navigation[0].url, '/pages/auth/auth')
+test('skip lifts away and reveals sign-in from the skip button', () => {
+  const h = harness('pages/onboarding/onboarding.vue')
+  h.state.skipIntro()
+  assert.equal(h.storage['zhiyou.onboarding.v1.completed'], true)
+  assert.equal(h.state.leaving, true)
+  assert.equal(h.state.skipping, true)
+  assert.equal(h.state.originX, 190)
+  assert.equal(h.state.originY, 724)
+  assert.equal(h.state.showLogin, false)
+  assert.equal(h.state.bursting, false, 'skip does not burst the call to action')
+  h.state.skipIntro()
+  assert.equal(h.timers.length, 2, 'ignore repeated taps while the transition is running')
+  h.timers.find(t => t.delay === 70).fn()
+  assert.equal(h.state.showLogin, true)
+  h.timers.find(t => t.delay === 980).fn()
+  assert.equal(h.navigation.length, 1)
+  assert.equal(h.navigation[0].url, '/pages/auth/auth?fromOnboarding=1')
 })
 
-test('unload cancels the transition and a failed navigation can be retried', () => {
-  const h = harness(page)
-  h.state.beginEntry()
+test('skip and subsequent launches preserve signed-in accounts and choose the correct entry', () => {
+  const account = { token: 'existing', login_provider: 'password' }
+  const h = harness('pages/onboarding/onboarding.vue', account)
+  h.state.finish(false)
+  assert.equal(h.navigation[0].url, '/pages/auth/auth?fromOnboarding=1')
+  assert.equal(h.storage.token, 'existing')
+  const reopened = harness('pages/onboarding/onboarding.vue', h.storage)
+  reopened.options.onLoad.call(reopened.state)
+  assert.equal(reopened.navigation[0].url, '/pages/tabs/tabs?tab=tour')
+  const oldProvider = harness('pages/onboarding/onboarding.vue', { ...account, login_provider: 'legacy-login' })
+  oldProvider.state.finish(false)
+  assert.equal(oldProvider.navigation[0].url, '/pages/auth/auth?fromOnboarding=1')
+})
+
+test('onboarding explicitly opens sign-in without automatically restoring a saved account', () => {
+  const h = harness('pages/auth/auth.vue', { token: 'existing', login_provider: 'password' })
+  h.options.onLoad.call(h.state, { fromOnboarding: '1' })
+  assert.equal(h.requests.length, 0)
+  assert.equal(h.navigation.length, 0)
+  h.options.onLoad.call(h.state, {})
+  assert.equal(h.requests[0].url, '/api/v1/user/me?client_type=app')
+})
+
+test('unloading during the animation cancels pending reveal and navigation', () => {
+  const h = harness('pages/onboarding/onboarding.vue')
+  h.state.finish(true)
   h.options.onUnload.call(h.state)
-  assert.equal(h.timers[0].cancelled, true)
-  const retry = harness(page)
-  retry.state.beginEntry()
-  retry.timers[0].fn()
+  assert.ok(h.timers.every(timer => timer.cancelled))
+})
+
+test('storage failures stay on the introduction; navigation failures allow retry', () => {
+  const h = harness('pages/onboarding/onboarding.vue')
+  h.context.uni.setStorageSync = () => { throw new Error('storage full') }
+  h.state.finish(false)
+  assert.equal(h.navigation.length, 0)
+  assert.equal(h.state.leaving, false)
+  assert.equal(h.toasts.length, 1)
+  const retry = harness('pages/onboarding/onboarding.vue')
+  retry.state.finish(false)
   retry.navigation[0].fail()
   assert.equal(retry.state.leaving, false)
-  assert.equal(retry.storage[key], undefined)
-  retry.state.beginEntry()
-  retry.timers[1].fn()
-  assert.equal(retry.navigation[1].url, home)
+  retry.state.finish(false)
+  assert.equal(retry.navigation.length, 2)
 })
