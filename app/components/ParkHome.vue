@@ -17,7 +17,7 @@
         <view class="park-action-panel" @touchstart="startPull($event, 1)" @touchmove="movePull"
           @touchend="endPull" @touchcancel="resetPull">
           <view class="park-actions">
-            <button :aria-label="t('景点详情')" @tap="$emit('planning', {})">
+            <button :aria-label="t('景点详情')" @tap="$emit('catalog')">
               <view class="park-action-icon"><WanderIcon name="pin" /></view>
               <text class="park-action-name">{{ t('景点详情') }}</text>
             </button>
@@ -185,7 +185,7 @@ import { ACCESS_ROUTES, FACILITIES, STEP_LINES, WEATHER_REFRESH_MS,
 export default {
   components: { ParkMap, WanderIcon },
   props: { spots: Array, routes: Array, catalogError: String, active: Boolean, selectedRouteId: [String, Number] },
-  emits: ['planning', 'ai', 'retry', 'map-change'],
+  emits: ['planning', 'catalog', 'ai', 'retry', 'map-change'],
   data() {
     const initialCard = homeRoutes(this.routes || [], this.spots || []).findIndex(route => route.route_id === this.selectedRouteId)
     return {

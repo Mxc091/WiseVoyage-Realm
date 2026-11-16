@@ -1,11 +1,18 @@
 import { loadRouteLibrary } from './route-map-runtime.js'
 import { wgs84ToGcj02 } from '../../shared/coordinates.js'
-import { WALK_TILES, WALK_ATTRIBUTION } from '../../shared/pedestrian-map.js'
 
 const CENTER = [39.9953, 116.2698]
 const PARK_BOUNDS = [[39.980, 116.244], [40.008, 116.284]]
 const DETAIL_ZOOM = 17
 const OVERVIEW_ZOOM = 15
+
+// AMap raster tiles load from the local network without a JS key. They are
+// published in GCJ-02, so every WGS-84 point is shifted into that frame before
+// it reaches Leaflet; map and data then share one coordinate space.
+const AMAP_TILES = 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}'
+const AMAP_ATTRIBUTION = '&copy; 高德地图 AutoNavi'
+const gcj = point => wgs84ToGcj02(point[0], point[1])
+const gcjPath = path => path.map(gcj)
 
 function toAmap([lat, lng]) {
   const [convertedLat, convertedLng] = wgs84ToGcj02(lat, lng)
@@ -103,10 +110,12 @@ function amapAdapter(A, element, report, onView) {
 function leafletAdapter(L, element, report, onView) {
   const map = L.map(element, {
     zoomControl: false, attributionControl: true, scrollWheelZoom: false, dragging: false,
-    touchZoom: false, doubleClickZoom: false, maxBounds: PARK_BOUNDS, minZoom: 12, maxZoom: 19,
-  }).setView(CENTER, OVERVIEW_ZOOM)
+    touchZoom: false, doubleClickZoom: false, maxBounds: PARK_BOUNDS.map(gcj), minZoom: 12, maxZoom: 19,
+  }).setView(gcj(CENTER), OVERVIEW_ZOOM)
   map.attributionControl.setPrefix(false)
-  const tiles = L.tileLayer(WALK_TILES, { maxZoom: 19, attribution: WALK_ATTRIBUTION }).addTo(map)
+  const tiles = L.tileLayer(AMAP_TILES, {
+    subdomains: '1234', maxZoom: 19, attribution: AMAP_ATTRIBUTION,
+  }).addTo(map)
   let loaded = false
   let errors = 0
   tiles.on('tileload', () => { if (!loaded) { loaded = true; report('osm') } })
@@ -121,19 +130,19 @@ function leafletAdapter(L, element, report, onView) {
       const method = value ? 'enable' : 'disable'
       for (const mode of ['dragging', 'touchZoom', 'scrollWheelZoom', 'doubleClickZoom']) map[mode]?.[method]()
     },
-    project: point => map.latLngToContainerPoint(point),
+    project: point => map.latLngToContainerPoint(gcj(point)),
     overview(points, [top, right, bottom, left]) {
-      if (!points.length) { map.setView(CENTER, OVERVIEW_ZOOM); return }
-      map.fitBounds(points, { paddingTopLeft: [left, top], paddingBottomRight: [right, bottom],
+      if (!points.length) { map.setView(gcj(CENTER), OVERVIEW_ZOOM); return }
+      map.fitBounds(points.map(gcj), { paddingTopLeft: [left, top], paddingBottomRight: [right, bottom],
         animate: false, maxZoom: 16 })
     },
     render(lines) {
       linesLayer.clearLayers()
-      renderPaths(lines, (path, style) => L.polyline(path, { ...style, interactive: false }).addTo(linesLayer))
+      renderPaths(lines, (path, style) => L.polyline(gcjPath(path), { ...style, interactive: false }).addTo(linesLayer))
     },
     move(action) {
       if (action.type === 'zoom') map.setZoom(map.getZoom() + action.delta)
-      if (action.position) map.setView(action.position, DETAIL_ZOOM)
+      if (action.position) map.setView(gcj(action.position), DETAIL_ZOOM)
     },
   }
 }

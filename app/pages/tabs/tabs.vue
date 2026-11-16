@@ -1,8 +1,7 @@
 <template>
   <view class="tabs-shell">
     <swiper class="pager-viewport" :current="pagerCurrent" :duration="260" :circular="false" :disable-touch="dockHidden" :skip-hidden-item-layout="false" @change="onPagerChange" @animationfinish="onPagerFinish">
-      <swiper-item><view class="panel-slot"><Home ref="home" :active="pagerCurrent === 0" @planning="onHomePlanning" @ai="selectTab(2)" @map-change="homeMap = $event" /></view></swiper-item>
-      <swiper-item><view class="panel-slot"><TourGuide ref="tour" /></view></swiper-item>
+      <swiper-item><view class="panel-slot"><Home ref="home" :active="pagerCurrent === 0" @ai="selectTab(1)" @map-change="homeMap = $event" /></view></swiper-item>
       <swiper-item><view class="panel-slot"><AiChat ref="ai" /></view></swiper-item>
       <swiper-item><view class="panel-slot"><Mine ref="mine" /></view></swiper-item>
     </swiper>
@@ -11,23 +10,22 @@
 </template>
 <script>
 import Home from '../home/home.vue'
-import TourGuide from '../tour-guide/tour-guide.vue'
 import AiChat from '../ai-chat/ai-chat.vue'
 import Mine from '../mine/mine.vue'
 import TabDock from '../../components/TabDock.vue'
 
-const TAB_KEYS = ['home', 'tour', 'ai', 'mine']
+const TAB_KEYS = ['home', 'ai', 'mine']
 const validIndex = index => Number.isInteger(index) && index >= 0 && index < TAB_KEYS.length
 export default {
-  components: { Home, TourGuide, AiChat, Mine, TabDock },
+  components: { Home, AiChat, Mine, TabDock },
   data() {
     return { current: 0, pagerCurrent: 0, pendingTab: null, switching: false,
-      panelReady: false, shellVisible: false, shownPanel: null, initialized: [false, false, false, false],
+      panelReady: false, shellVisible: false, shownPanel: null, initialized: [false, false, false],
       keyboardOpen: false, itineraryOpen: false, homeMap: false }
   },
   computed: {
     dockHidden() { return this.keyboardOpen || this.itineraryOpen || this.homeMap },
-    aiHidden() { return this.pagerCurrent === 2 },
+    aiHidden() { return this.pagerCurrent === 1 },
   },
   onLoad(query) {
     const index = TAB_KEYS.indexOf((query && query.tab) || 'home')
@@ -67,12 +65,7 @@ export default {
   },
   onBackPress() { return this.callHook(this.current, 'onBackPress') },
   methods: {
-    panel(index) { return [this.$refs.home, this.$refs.tour, this.$refs.ai, this.$refs.mine][index] || null },
-    // Home page entries jump into the existing planning flow on the 智能导览 tab.
-    onHomePlanning(payload) {
-      uni.$emit('planning:open', payload || {})
-      this.selectTab(1)
-    },
+    panel(index) { return [this.$refs.home, this.$refs.ai, this.$refs.mine][index] || null },
     // Embedded pages retain their component instances; forward page hooks only when visible.
     hookFns(raw, output) {
       if (!raw) return output

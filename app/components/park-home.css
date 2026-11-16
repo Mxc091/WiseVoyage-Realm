@@ -141,9 +141,12 @@
   padding: 7px 8px;
   border-radius: 17px;
   background: #f3eefb;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 10px 20px -16px rgba(74, 52, 130, 0.55);
   text-align: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.16s cubic-bezier(0.2, 0, 0, 1), background 0.16s ease, box-shadow 0.16s ease;
 }
-.park-actions button:active { background: #eee6f9; }
+.park-actions button:active { background: #eee6f9; transform: scale(0.96); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 10px -12px rgba(74, 52, 130, 0.5); }
 .park-action-icon {
   display: grid;
   width: 30px;
@@ -286,7 +289,7 @@
 .park-weather-source .iconfont { font-size: 14px; }
 .park-weather.is-open .park-weather-source { top: 9px; right: 50px; bottom: auto; height: 37px; }
 .park-weather.is-open .park-weather-small { opacity: 0; visibility: hidden; transition: opacity 120ms ease-out, visibility 0s 120ms; }
-.park-weather-temp { display: flex; gap: 6px; align-items: center; font-size: 26px; color: var(--park-ink); line-height: 1.35; }
+.park-weather-temp { display: flex; gap: 6px; align-items: center; font-size: 26px; color: var(--park-ink); line-height: 1.35; font-variant-numeric: tabular-nums; }
 .park-weather-icon { color: #677e90; font-size: 20px; }
 .park-weather-sub { color: var(--park-muted-ink); font-size: 11px; }
 .park-sheet { box-sizing: border-box; padding: 10px 13px 13px; }

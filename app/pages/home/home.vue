@@ -4,8 +4,9 @@
     :routes="routes"
     :catalog-error="error"
     :active="active"
-    @planning="$emit('planning', $event)"
-    @ai="$emit('ai', $event)"
+    @planning="openPlanning"
+    @catalog="openCatalog"
+    @ai="$emit('ai')"
     @retry="load"
     @map-change="$emit('map-change', $event)"
   />
@@ -31,7 +32,7 @@ function req(path) {
 export default {
   components: { ParkHome },
   props: { active: { type: Boolean, default: true } },
-  emits: ['planning', 'ai', 'map-change'],
+  emits: ['ai', 'map-change'],
   data() {
     return { spots: [], routes: [], error: '', loading: false, loaded: false }
   },
@@ -55,6 +56,17 @@ export default {
       }
     },
     refresh() { if (!this.loaded) this.load() },
+    // 景点详情按钮先进入景点列表（Web 详情模块），列表里再打开单个景点详情
+    openCatalog() { uni.navigateTo({ url: '/pages/scenic/scenic' }) },
+    openPlanning(payload) {
+      const spot = payload && payload.spot
+      if (spot && spot.spot_id) {
+        uni.navigateTo({ url: '/pages/scenic/scenic?spotId=' + spot.spot_id })
+        return
+      }
+      const query = payload && payload.wander ? '?wander=1' : (payload && payload.featured ? '?featured=1' : '')
+      uni.navigateTo({ url: '/pages/tour-guide/tour-guide' + query })
+    },
   },
 }
 </script>
