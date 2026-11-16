@@ -1,6 +1,7 @@
 <template>
   <view class="tabs-shell">
     <swiper class="pager-viewport" :current="pagerCurrent" :duration="260" :circular="false" :disable-touch="dockHidden" :skip-hidden-item-layout="false" @change="onPagerChange" @animationfinish="onPagerFinish">
+      <swiper-item><view class="panel-slot"><Home ref="home" :active="pagerCurrent === 0" @planning="onHomePlanning" @ai="selectTab(2)" @map-change="homeMap = $event" /></view></swiper-item>
       <swiper-item><view class="panel-slot"><TourGuide ref="tour" /></view></swiper-item>
       <swiper-item><view class="panel-slot"><AiChat ref="ai" /></view></swiper-item>
       <swiper-item><view class="panel-slot"><Mine ref="mine" /></view></swiper-item>
@@ -9,32 +10,34 @@
   </view>
 </template>
 <script>
+import Home from '../home/home.vue'
 import TourGuide from '../tour-guide/tour-guide.vue'
 import AiChat from '../ai-chat/ai-chat.vue'
 import Mine from '../mine/mine.vue'
 import TabDock from '../../components/TabDock.vue'
 
-const validIndex = index => Number.isInteger(index) && index >= 0 && index < 3
+const TAB_KEYS = ['home', 'tour', 'ai', 'mine']
+const validIndex = index => Number.isInteger(index) && index >= 0 && index < TAB_KEYS.length
 export default {
-  components: { TourGuide, AiChat, Mine, TabDock },
+  components: { Home, TourGuide, AiChat, Mine, TabDock },
   data() {
     return { current: 0, pagerCurrent: 0, pendingTab: null, switching: false,
-      panelReady: false, shellVisible: false, shownPanel: null, initialized: [false, false, false],
-      keyboardOpen: false, itineraryOpen: false }
+      panelReady: false, shellVisible: false, shownPanel: null, initialized: [false, false, false, false],
+      keyboardOpen: false, itineraryOpen: false, homeMap: false }
   },
   computed: {
-    dockHidden() { return this.keyboardOpen || this.itineraryOpen },
-    aiHidden() { return this.pagerCurrent === 1 },
+    dockHidden() { return this.keyboardOpen || this.itineraryOpen || this.homeMap },
+    aiHidden() { return this.pagerCurrent === 2 },
   },
   onLoad(query) {
-    const index = ['tour', 'ai', 'mine'].indexOf((query && query.tab) || 'tour')
+    const index = TAB_KEYS.indexOf((query && query.tab) || 'home')
     this.current = this.pagerCurrent = index < 0 ? 0 : index
     this._onKeyboard = event => { this.keyboardOpen = !!(event && event.height > 0) }
     if (uni.onKeyboardHeightChange) uni.onKeyboardHeightChange(this._onKeyboard)
     this._onDockSync = payload => { if (payload && payload.source === 'tour') this.itineraryOpen = !!payload.hide }
     this._onTabsSelect = payload => {
       const key = typeof payload === 'string' ? payload : (payload && payload.tab) || 'tour'
-      this.selectTab(['tour', 'ai', 'mine'].indexOf(key))
+      this.selectTab(TAB_KEYS.indexOf(key))
     }
     uni.$on('dock:sync', this._onDockSync)
     uni.$on('tabs:select', this._onTabsSelect)
@@ -57,14 +60,19 @@ export default {
   onUnload() {
     this.shellVisible = false
     this.hidePanel()
-    for (let i = 0; i < 3; i++) if (this.initialized[i]) this.callHook(i, 'onUnload')
+    for (let i = 0; i < TAB_KEYS.length; i++) if (this.initialized[i]) this.callHook(i, 'onUnload')
     if (uni.offKeyboardHeightChange && this._onKeyboard) uni.offKeyboardHeightChange(this._onKeyboard)
     uni.$off('dock:sync', this._onDockSync)
     uni.$off('tabs:select', this._onTabsSelect)
   },
   onBackPress() { return this.callHook(this.current, 'onBackPress') },
   methods: {
-    panel(index) { return [this.$refs.tour, this.$refs.ai, this.$refs.mine][index] || null },
+    panel(index) { return [this.$refs.home, this.$refs.tour, this.$refs.ai, this.$refs.mine][index] || null },
+    // Home page entries jump into the existing planning flow on the 智能导览 tab.
+    onHomePlanning(payload) {
+      uni.$emit('planning:open', payload || {})
+      this.selectTab(1)
+    },
     // Embedded pages retain their component instances; forward page hooks only when visible.
     hookFns(raw, output) {
       if (!raw) return output
