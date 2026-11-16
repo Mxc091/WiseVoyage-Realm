@@ -1,0 +1,34 @@
+{
+  "checked_at": "2026-10-11",
+  "policy": "仅为来源线索，不是已上线设施目录；不生成坐标、最近距离或当前开放状态。",
+  "facilities": [
+    {
+      "destination": "颐和园",
+      "name": "新建宫门码头南侧公厕",
+      "relative_location": "新建宫门码头南侧10米",
+      "source_url": "https://csglw.beijing.gov.cn/hjwsbz/hjwsjc/hysz/202501/P020250107538323729038.pdf",
+      "evidence_status": "search_index_pending_fulltext",
+      "latitude": null,
+      "longitude": null,
+      "coordinate_system": null,
+      "open_status": "unknown",
+      "checked_at": "2026-10-11",
+      "navigation_ready": false
+    },
+    {
+      "destination": "颐和园",
+      "name": "文昌阁电瓶船码头南侧公厕",
+      "relative_location": "文昌阁电瓶船码头南侧20米",
+      "source_url": "https://csglw.beijing.gov.cn/hjwsbz/hjwsjc/hysz/202501/P020250107538323729038.pdf",
+      "evidence_status": "search_index_pending_fulltext",
+      "latitude": null,
+      "longitude": null,
+      "coordinate_system": null,
+      "open_status": "unknown",
+      "checked_at": "2026-10-11",
+      "navigation_ready": false
+    }
+  ],
+  "scope": "颐和园",
+  "scope_cleaned_at": "2026-11-06"
+}

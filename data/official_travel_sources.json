@@ -1,0 +1,105 @@
+{
+  "checked_at": "2026-10-11",
+  "policy": "按事实和适用范围引用；来源覆盖不等于全部内容核实；不计算无坐标的最近设施。",
+  "sources": [
+    {
+      "spots": [
+        "仁寿殿",
+        "长廊",
+        "佛香阁",
+        "昆明湖",
+        "十七孔桥",
+        "苏州街"
+      ],
+      "publisher": "颐和园",
+      "url": "https://www.summerpalace.net.cn/guide_map.html",
+      "checked_at": "2026-10-11",
+      "published_at": null,
+      "scope": "park_level",
+      "verified_claims": {
+        "toilet": "官方导览地图可查看卫生间和第三卫生间标识。地图中的具体点位未在本项目提取，不能计算最近厕所。",
+        "service": "官方导览地图包含游客服务中心、码头及无障碍线路。"
+      },
+      "limits": "仅支持列出的事实；未核实最近距离、实时开放状态、商家价格或服务坐标。"
+    },
+    {
+      "spots": [
+        "仁寿殿",
+        "长廊",
+        "佛香阁",
+        "昆明湖",
+        "十七孔桥",
+        "苏州街"
+      ],
+      "publisher": "北京市公园管理中心",
+      "url": "https://gygl.beijing.gov.cn/mlgy/mlgy_lsmy/201911/t20191129_732237.html",
+      "checked_at": "2026-10-11",
+      "published_at": "2019-11-29",
+      "scope": "park_level",
+      "verified_claims": {
+        "history": "颐和园由清漪园发展而来，是北京海淀的皇家园林。",
+        "transport": "官方介绍列出地铁4号线等到园交通。旧页面中的公交线路需出行前重新确认。"
+      },
+      "limits": "仅支持列出的事实；未核实最近距离、实时开放状态、商家价格或服务坐标。"
+    },
+    {
+      "spots": [
+        "长廊",
+        "佛香阁",
+        "仁寿殿",
+        "昆明湖",
+        "十七孔桥",
+        "苏州街"
+      ],
+      "publisher": "北京市园林绿化局",
+      "url": "https://yllhj.beijing.gov.cn/ztxx/cy/ypsx/202509/t20250925_4210861.shtml",
+      "published_at": "2025-09-25",
+      "checked_at": "2026-10-11",
+      "scope": "park_dining",
+      "verified_claims": {
+        "dining": "公园餐饮目录将听鹂馆列为颐和园中华老字号餐饮点。"
+      },
+      "limits": "园区级餐饮点，不表示位于每个子景点旁；没有核实当日营业、菜单、价格及坐标。"
+    },
+    {
+      "spots": [
+        "长廊",
+        "佛香阁",
+        "仁寿殿",
+        "昆明湖",
+        "十七孔桥",
+        "苏州街"
+      ],
+      "publisher": "北京市城市管理委员会",
+      "url": "https://csglw.beijing.gov.cn/hjwsbz/hjwsjc/hysz/202501/P020250107538323729038.pdf",
+      "published_at": "2025-01",
+      "checked_at": "2026-10-11",
+      "scope": "dated_facility_inspection",
+      "verified_claims": {
+        "toilets": "2025年第Ⅴ-003期检查资料的搜索索引列出颐和园新建宫门码头南侧10米公厕、文昌阁电瓶船码头南侧20米公厕。"
+      },
+      "limits": "搜索索引可见具体方位，PDF全文和截图本轮未成功提取；需复核原表。距离为资料所述相对位置，不是用户到厕所距离；无坐标及当前开放确认。"
+    },
+    {
+      "spots": [
+        "长廊",
+        "佛香阁",
+        "仁寿殿",
+        "昆明湖",
+        "十七孔桥",
+        "苏州街"
+      ],
+      "publisher": "北京市人民政府门户网站",
+      "url": "https://www.beijing.gov.cn/fuwu/bmfw/sy/jrts/202111/t20211129_2547066.html",
+      "published_at": "2021-11-29",
+      "checked_at": "2026-10-11",
+      "scope": "official_lookup_channel",
+      "verified_claims": {
+        "toilets": "报道介绍颐和园官方公众号的颐和导览栏目可查询园内卫生间分布，并结合游客位置查询最近卫生间。"
+      },
+      "limits": "证明官方查询渠道曾提供此功能，不表示本项目已经接入，也未核实当前公众号菜单。"
+    }
+  ],
+  "scope": "颐和园",
+  "scope_cleaned_at": "2026-11-06"
+}
