@@ -2,7 +2,8 @@
   <view class="dock" :style="dockStyle">
     <view class="dock-inner">
       <view v-for="(tab, i) in tabs" :key="tab.key" class="dock-item" :class="{ on: current === i }" @tap="pick(i)">
-        <text class="dock-icon iconfont" :class="tab.icon" :style="iconStyle(i)"></text>
+        <WanderIcon v-if="tab.key==='ai'" class="dock-headphones" name="headphones" :style="iconStyle(i)" />
+        <text v-else class="dock-icon iconfont" :class="tab.icon" :style="iconStyle(i)"></text>
         <view class="dock-label-wrap">
           <text class="dock-label" :style="labelStyle(i)">{{ t(tab.label) }}</text>
         </view>
@@ -12,12 +13,14 @@
   </view>
 </template>
 <script>
+import WanderIcon from './WanderIcon.vue'
 const MUTED = [75, 85, 99]
 // 选中态不再用胶囊底色，靠品牌紫点亮图标和文字
 const INK = [101, 71, 173]
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
 export default {
   name: 'TabDock',
+  components: { WanderIcon },
   props: {
     current: { type: Number, default: 0 },
     progress: { type: Number, default: 0 },
@@ -29,7 +32,7 @@ export default {
     return {
       tabs: [
         { key: 'home', icon: 'icon-fangzi', label: '首页' },
-        { key: 'ai', icon: 'icon-aishuziren', label: 'AI小导游' },
+        { key: 'ai', label: 'AI导游' },
         { key: 'mine', icon: 'icon-wode1', label: '我的' },
       ],
     }
@@ -69,6 +72,7 @@ export default {
 .dock-item{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:50px;gap:3px;padding:0;background:transparent;-webkit-tap-highlight-color:transparent;transition:transform .16s cubic-bezier(.2,0,0,1)}
 .dock-item:active{transform:scale(.96)}
 .dock-icon{font-size:26px;line-height:1.15;transition:transform .26s ease,color .26s ease}
+.dock-headphones { width: 24px; height: 26px; flex: none; }
 .dock-label-wrap{position:relative;width:100%;min-height:22px;display:flex;align-items:center;justify-content:center}
 .dock-label{transition:color .26s ease;display:block;max-width:100%;font-size:13px;line-height:1.3;white-space:normal;letter-spacing:0;text-align:center}
 .dock-item.on .dock-label{font-weight:700}

@@ -24,6 +24,10 @@
       "style": { "navigationBarTitleText": "领取电脑路线", "navigationBarTextStyle": "black", "navigationBarBackgroundColor": "#f8fafc" }
     },
     {
+      "path": "pages/park-map/park-map",
+      "style": { "navigationStyle": "custom", "disableScroll": true, "backgroundColor": "#f7f4ff" }
+    },
+    {
       "path": "pages/auth/auth",
       "style": {
         "navigationStyle": "custom",

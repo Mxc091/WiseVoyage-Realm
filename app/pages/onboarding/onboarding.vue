@@ -1,5 +1,7 @@
 <template>
   <view class="onboarding" :class="{ 'is-english': english, 'is-bursting': bursting, 'is-opening': showLogin, 'is-pressing': pressing, 'is-skipping': skipping }">
+    <ParkWelcome v-if="parkWelcome" :english="english" @continue="parkWelcome = false" />
+    <template v-else>
     <view class="intro-header">
       <button class="skip" :disabled="leaving" hover-class="none" @tap="skipIntro">{{ english ? 'Skip' : '跳过' }}</button>
       <button class="lang-switch" :class="{ 'is-eng': !english }" hover-class="none" :aria-label="english ? '切换到中文' : 'Switch to English'" :aria-pressed="english" @tap="toggleLanguage">{{ english ? '中' : 'ENG' }}</button>
@@ -39,6 +41,7 @@
     <view v-if="bursting" class="burst-layer" aria-hidden="true">
       <view v-for="particle in particles" :key="particle.id" class="burst-particle" :style="particle.style" />
     </view>
+    </template>
   </view>
 </template>
 
@@ -47,11 +50,12 @@ import { LOGIN_PROVIDER } from '../../common/config.js'
 import { LANGUAGE_STORAGE_KEY } from '../../common/tour-language.js'
 import { ONBOARDING_STORAGE_KEY, appEntry } from '../../common/onboarding.js'
 import AuthPage from '../auth/auth.vue'
+import ParkWelcome from '../../components/ParkWelcome.vue'
 
 export default {
-  components: { AuthPage },
+  components: { AuthPage, ParkWelcome },
   data() {
-    return { current: 0, progress: 0, transitionBase: 0, tracking: false, leaving: false, english: false,
+    return { current: 0, progress: 0, transitionBase: 0, tracking: false, leaving: false, english: false, parkWelcome: true,
       slideWidth: 375, dotStep: 32, bursting: false, showLogin: false, pressing: false, skipping: false,
       particles: [], originX: 187, originY: 700 }
   },
