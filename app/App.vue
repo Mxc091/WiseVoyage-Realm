@@ -102,4 +102,16 @@ page .page .aurora-background{background:var(--app-page-gradient)!important;back
 /* #endif */
 /* 全局统一返回箭头 */
 .app-back-icon{width:40rpx;height:40rpx;background-color:#282332;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 12H5M11 6l-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 12H5M11 6l-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat}
+/* 全局：页面左上角返回按钮统一为紫边白底圆形 */
+.nav-back, .planning-back, .detail-back {
+  width: 72rpx !important; height: 72rpx !important;
+  border-radius: 50% !important;
+  background: #ffffff !important;
+  border: 1rpx solid rgba(139,120,230,.5) !important;
+  box-shadow: 0 6rpx 18rpx rgba(90,70,180,.12);
+  display: flex; align-items: center; justify-content: center;
+}
+.nav-back .iconfont, .planning-back .iconfont { color: #6547ad !important; }
+.nav-back .app-back-icon, .planning-back .app-back-icon, .nav-back .back-icon { background-color: #6547ad !important; }
+
 </style>

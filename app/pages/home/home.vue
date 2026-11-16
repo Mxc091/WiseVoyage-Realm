@@ -6,14 +6,17 @@
     :active="active"
     @planning="openPlanning"
     @catalog="openCatalog"
-    @ai="$emit('ai')"
+    @claim-scan="scanRoute"
+    @ai="$emit('ai', $event)"
     @retry="load"
     @map-change="$emit('map-change', $event)"
   />
 </template>
 <script>
 import ParkHome from '../../components/ParkHome.vue'
-import { BASE_URL } from '../../common/config.js'
+import { BASE_URL, isLocalStationOrigin } from '../../common/config.js'
+import { CLAIM_ROUTE, saveClaim } from '../../common/station-claim.js'
+import { sharedPlanUrl } from '../../common/wander-handoff.js'
 
 function req(path) {
   return new Promise((resolve, reject) => {
@@ -34,7 +37,7 @@ export default {
   props: { active: { type: Boolean, default: true } },
   emits: ['ai', 'map-change'],
   data() {
-    return { spots: [], routes: [], error: '', loading: false, loaded: false }
+    return { spots: [], routes: [], error: '', loading: false, loaded: false, scanning: false }
   },
   created() { this.load() },
   methods: {
@@ -56,6 +59,23 @@ export default {
       }
     },
     refresh() { if (!this.loaded) this.load() },
+    // 扫码领取路线：扫描电脑网页上的路线二维码，打开路线确认页
+    scanRoute() {
+      if (this.scanning) return
+      this.scanning = true
+      uni.scanCode({ onlyFromCamera: false, scanType: ['qrCode'],
+        success: result => {
+          let claim
+          try { claim = saveClaim(result && result.result) }
+          catch (_) { uni.showToast({ title: '请扫描网页上的路线领取码', icon: 'none' }); return }
+          if (claim.origin && !isLocalStationOrigin(claim.origin)) { uni.showToast({ title: '只允许连接局域网电脑的18000端口', icon: 'none' }); return }
+          const query = 'claim=' + encodeURIComponent(claim.token || '') + '&server=' + encodeURIComponent(claim.origin || '')
+          uni.navigateTo({ url: CLAIM_ROUTE + '?' + query, fail: () => uni.showToast({ title: '打开领取页失败，请重试', icon: 'none' }) })
+        },
+        fail: err => { if (!String(err && err.errMsg || '').includes('cancel')) uni.showToast({ title: '扫码失败，请检查相机权限', icon: 'none' }) },
+        complete: () => { this.scanning = false }
+      })
+    },
     // 景点详情按钮先进入景点列表（Web 详情模块），列表里再打开单个景点详情
     openCatalog() { uni.navigateTo({ url: '/pages/scenic/scenic' }) },
     openPlanning(payload) {
@@ -63,6 +83,14 @@ export default {
       if (spot && spot.spot_id) {
         uni.navigateTo({ url: '/pages/scenic/scenic?spotId=' + spot.spot_id })
         return
+      }
+      // 「路线规划」：优先回到最近一次存入的随心逛路线，没有才打开空白规划
+      if (!payload || (!payload.wander && !payload.featured && !payload.route)) {
+        let last = null
+        try { last = uni.getStorageSync('wander-last-handoff') } catch (_) {}
+        if (last && Array.isArray(last.ids) && last.ids.length) {
+          try { uni.navigateTo({ url: sharedPlanUrl(last) }); return } catch (_) {}
+        }
       }
       // 随心逛有自己的规划页（WanderPlanner），不进智能导览
       if (payload && payload.wander && !payload.featured && !payload.route) {

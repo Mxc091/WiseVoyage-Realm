@@ -12,6 +12,10 @@
     <view v-if="!expanded" class="park-map-reveal" @touchstart="startPull($event, 1)" @touchmove="movePull"
       @touchend="endPull" @touchcancel="resetPull" />
     <view class="park-status-veil" aria-hidden="true"></view>
+    <button class="park-scan" :aria-label="t('扫码领取路线')" @tap.stop="$emit('claim-scan')">
+      <text class="park-scan-icon iconfont icon-scan" aria-hidden="true"></text>
+      <text class="park-scan-label">{{ t('扫码领取路线') }}</text>
+    </button>
     <view class="park-content-layer">
     <scroll-view :scroll-y="!expanded && !dragging" :aria-hidden="expanded" class="park-page" :show-scrollbar="false"
       @scroll="onPageScroll">
@@ -23,6 +27,10 @@
             <button :aria-label="t('景点详情')" @tap="$emit('catalog')">
               <view class="park-action-icon park-icon-pin" aria-hidden="true"></view>
               <text class="park-action-name">{{ t('景点详情') }}</text>
+            </button>
+            <button :aria-label="t('路线规划')" @tap="$emit('planning', {})">
+              <view class="park-action-icon park-icon-route" aria-hidden="true"></view>
+              <text class="park-action-name">{{ t('路线规划') }}</text>
             </button>
             <button :aria-label="t('随心逛')" @tap="$emit('planning', { wander: true })">
               <view class="park-action-icon park-icon-compass" aria-hidden="true"></view>
@@ -187,7 +195,7 @@ import { ACCESS_ROUTES, FACILITIES, STEP_LINES, WEATHER_REFRESH_MS,
 export default {
   components: { ParkMap },
   props: { spots: Array, routes: Array, catalogError: String, active: Boolean, selectedRouteId: [String, Number] },
-  emits: ['planning', 'catalog', 'ai', 'retry', 'map-change'],
+  emits: ['planning', 'catalog', 'ai', 'retry', 'map-change', 'claim-scan'],
   data() {
     const initialCard = homeRoutes(this.routes || [], this.spots || []).findIndex(route => route.route_id === this.selectedRouteId)
     return {

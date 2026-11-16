@@ -6,19 +6,18 @@
     <NocturneConfirm v-if="showEndConfirm" plain :title="t('结束导览')" :content="t('确定要结束本次导览吗？')" :cancel-label="t('取消')" :confirm-label="t('确定')" @cancel="showEndConfirm=false" @confirm="endTour" />
     <!-- 导航栏 -->
     <view class="nav" :style="{paddingTop:statusH+'px'}">
-      <view class="nav-back" @tap="goBack" role="button" :aria-label="t('返回')"><view class="back-icon" aria-hidden="true"></view></view>
-      <view class="nav-end" @tap="confirmEnd" role="button" :aria-label="t('结束导览')"><text class="nav-end-text">{{ t('结束') }}</text></view>
+      <view class="nav-collapse" @tap="collapseTour" role="button" :aria-label="t('收起导览')"><view class="collapse-icon" aria-hidden="true"></view></view>
+      <view class="nav-right">
+        <view v-if="remainingDuration>0" class="nav-remaining"><text class="nav-remaining-text">{{ t('预计剩余约 {minutes} 分钟',{minutes:remainingDuration}) }}</text></view>
+        <view class="nav-end" @tap="confirmEnd" role="button" :aria-label="t('结束导览')"><text class="nav-end-text">{{ t('结束') }}</text></view>
+      </view>
     </view>
 
     <view v-if="showRouteInfo" class="tour-route-mask" @tap="showRouteInfo=false"><view class="tour-route-sheet" @tap.stop><view class="tour-route-heading"><text>{{ t('剩余游览路线') }}</text><button @tap="showRouteInfo=false" :aria-label="t('关闭')"><text class="iconfont icon-close" aria-hidden="true"></text></button></view><scroll-view scroll-y class="tour-route-body"><RouteOverview v-if="routeOverview" :overview="routeOverview" :current-id="liveCurrentId" /><text v-else>{{ t('路线详情暂时无法加载') }}</text></scroll-view></view></view>
     <TourRouteRepair v-if="repairOpen" ref="routeRepair" :sid="sid" :current-name="spotCards.find(s=>s.spot_id===liveCurrentId)?.spot_name||spotName" :remaining-spots="repairRemainingSpots" :initial="repairInitial" :prompt="repairPrompt" @close="repairOpen=false" @applied="routeRepaired" @refresh="refresh(true)" />
     <!-- 数字导游 -->
     <view class="guide-stage" :style="!tourVisible || leavingTour || repairOpen || showRouteInfo ? 'visibility:hidden' : ''">
-      <view v-if="spotCards.length" class="tp-stats stage-progress">
-        <text class="tp-stat" v-if="routeOverview&&remainingDuration==null">{{ t('路线用时待确认') }}</text>
-        <text class="tp-stat" v-else-if="remainingDuration > 0">{{ t('预计剩余约 {minutes} 分钟', {minutes:remainingDuration}) }}</text>
-        <text class="tp-stat done" v-else>{{ t('路线游览完毕') }}</text>
-      </view>
+      <image v-if="stageScenic" class="stage-scenic" :src="stageScenic" mode="aspectFill" aria-hidden="true"></image>
       <text v-if="guideDisplayName" class="stage-guide-name">{{ guideDisplayName }}</text>
       <!-- #ifdef APP-PLUS -->
       <tour-xingyun v-if="guideProvider==='xingyun'" :payload="xingyunPayload" @state="onXingyunState" />
@@ -43,6 +42,7 @@
       </view>
     </view>
 
+
     <!-- #ifdef APP-PLUS -->
     <view v-if="guideProvider==='xingyun' && xingyunFailed && avatarMessage" class="stage-footer"><text class="avatar-runtime-status">{{ t(avatarMessage) }}</text></view>
     <view v-if="guideProvider==='xingyun'&&xingyunFailed" class="xingyun-retry" role="button" @tap="connectXingyun"><text>{{ t('重新连接数字人') }}</text></view>
@@ -52,21 +52,23 @@
     <!-- #endif -->
     <!-- 景点切换卡片 -->
     <view class="spot-switch" v-if="spotCards.length">
-      <view class="ss-arrow" @tap="prevSpot" role="button" :aria-label="t('上一个景点')"><text class="iconfont icon-chevron-left" aria-hidden="true"></text></view>
-      <view class="ss-card">
+      <view class="ss-card" @touchstart="onSpotTouchStart" @touchmove="onSpotTouchMove" @touchend="onSpotTouchEnd" @touchcancel="onSpotTouchEnd">
         <image v-if="currentSpot.image_path||currentSpot.route_cover_image" :src="fixImg(currentSpot.image_path||currentSpot.route_cover_image)" class="ss-img" mode="aspectFill"></image>
-        <view v-else class="ss-img-df"></view>
+        <view v-else class="ss-img ss-img-df"></view>
         <view class="ss-info">
           <view class="ss-top">
-            <text class="ss-cat">{{ spotIdx+1 }}/{{ spotCards.length }}</text><text class="ss-name">{{ t(currentSpot.spot_name) }}</text>
-            <text class="ss-cat" v-if="!currentSpot.image_path && currentSpot.route_cover_image">{{ t('路线示意图') }}</text>
+            <text class="ss-name">{{ t(currentSpot.spot_name) }}</text>
+            <text class="ss-cat">{{ spotIdx+1 }}/{{ spotCards.length }}</text>
+          </view>
+          <text v-if="currentSpot.description" class="ss-desc">{{ t(currentSpot.description) }}</text>
+          <view class="ss-meta">
+            <text>步行 {{ cardWalk }}</text><text class="ss-meta-sep">|</text><text>用时 {{ cardDuration }}</text>
+            <view class="ss-checkin" :class="{done: checkedSpotId && checkedSpotId===viewSpotId}" @tap.stop="checkIn" role="button" :aria-label="t('打卡')">
+              <view class="ss-checkin-icon"></view><text class="ss-checkin-text">{{ checkedSpotId && checkedSpotId===viewSpotId ? '已打卡' : '打卡' }}</text>
+            </view>
           </view>
         </view>
-        <view class="ss-checkin" :class="{done: checkedSpotId && checkedSpotId===viewSpotId}" @tap.stop="checkIn" role="button" :aria-label="t('打卡')">
-          <view class="ss-checkin-icon"></view><text class="ss-checkin-text">{{ checkedSpotId && checkedSpotId===viewSpotId ? '已打卡' : '打卡' }}</text>
-        </view>
       </view>
-      <view class="ss-arrow" @tap="nextSpot" role="button" :aria-label="t('下一个景点')"><text class="iconfont icon-chevron-right" aria-hidden="true"></text></view>
     </view>
 
     <!-- 探索卡片（打卡结果） -->
@@ -123,6 +125,11 @@
       </view>
     </scroll-view>
 
+    <!-- 推荐问题 -->
+    <scroll-view v-if="!msgs.length && !loading" scroll-x class="tour-chips" :show-scrollbar="false">
+      <button v-for="q in quick.slice(0,3)" :key="q" class="tour-chip" @tap="quickAsk(q)">{{ t(q) }}</button>
+    </scroll-view>
+
     <!-- 底部输入区 -->
     <view class="bottom-bar" :class="{'keyboard-open':keyboardHeight>0}" :style="keyboardHeight>0?{paddingBottom:keyboardHeight+'px'}:{}">
       <view class="input-row">
@@ -136,6 +143,7 @@
         <view v-if="!voiceMode" class="send-btn" @tap="onSend" :class="{disabled:!text||loading||transcribing}">{{ t('发送') }}</view>
       </view>
     </view>
+    <PageDock :active="0" />
   </view>
 </template>
 
@@ -145,6 +153,7 @@ import RouteOverview from '../../components/RouteOverview.vue'
 import TourRouteRepair from '../../components/TourRouteRepair.vue'
 import { isRouteChange, repairDefaults } from '../../common/route-planning.js'
 import TourXingyun from '../../components/tour-xingyun.vue'
+import PageDock from '../../components/PageDock.vue'
 import { prepareNativeGuideAudio } from '../../common/avatar-audio.js'
 import { BASE_URL, assetUrl, isBeijingCity } from '../../common/config.js'
 import { appendTourChatMessage } from '../../common/tour-chat-log.js'
@@ -185,14 +194,14 @@ var api = {
 }
 
 export default {
-  components: {NocturneConfirm,TourXingyun,RouteOverview,TourRouteRepair,
+  components: {NocturneConfirm,TourXingyun,RouteOverview,TourRouteRepair,PageDock,
   },
   data: function() {
     return {
 
       keyboardHeight:0,inputHeight:0,textareaFocus:false,showEndConfirm: false,tourVisible:true,leavingTour:false,endingTour:false,appXingyun:false,xingyunPayload:{},xingyunConnected:false,xingyunFailed:false,xingyunActive:false,
       chatTranslating:false,chatTranslationFailed:false,
-      showRouteInfo:false,repairOpen:false,repairOpening:false,repairPrompt:'',repairInitial:{},routeOverview:null,liveCurrentId:0,
+      showRouteInfo:false,repairOpen:false,repairOpening:false,repairPrompt:'',repairInitial:{},routeOverview:null,fullRouteOverview:null,liveCurrentId:0,
       sid: 0, msgs: [], spotCards: [], spotIdx: 0, progressActive: -1, progressScrollLeft: 0, fadeLeft: false, fadeRight: false, progressTrackW: 0, progressContentW: 0, progressNodeW: 100,
       guideName: '', guideNameEn: '', guideSourceVideo:'', guideProvider:'', statusH: 20, fallbackPoster:'', fallbackName:'', checkedSpotId:0, checkinBusy:false, cardVisible:false, checkinTime:'',
     quoteIndex:0, quotes:['不知道去哪的时候，就随便走走吧','慢慢走，才看得见风景','这一站，值得停下来看看','走过的路，都会变成故事'], cardPhoto:'',
@@ -221,7 +230,20 @@ export default {
     cardWalk: function () {
       var s = this.currentSpot || {}
       var meters = Number(s.distance_m || s.distance || 0)
-      return meters > 0 ? (meters / 1000).toFixed(1) + ' 公里' : '—'
+      // 景点接口不带距离时，用整条路线里“上一站→本站”的步行段补上（第一站取入园段）
+      if (!(meters > 0) && this.fullRouteOverview) {
+        var ov = this.fullRouteOverview
+        var stops = ov.stops || []
+        for (var i = 0; i < stops.length; i++) {
+          if (stops[i].spot_id === s.spot_id) {
+            var leg = i === 0 ? ov.entry_leg : (ov.legs && ov.legs[i - 1])
+            if (leg && leg.meters) meters = Number(leg.meters)
+            break
+          }
+        }
+      }
+      if (!(meters > 0)) return '—'
+      return meters >= 1000 ? (meters / 1000).toFixed(1) + ' 公里' : Math.round(meters) + ' 米'
     },
     cardDuration: function () {
       var s = this.currentSpot || {}
@@ -243,6 +265,39 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
     },
     currentSpot: function() {
       return this.spotCards[this.spotIdx] || {}
+    },
+    stageScenic: function() {
+      var s = this.currentSpot || {}
+      var img = s.image_path || s.route_cover_image
+      return img ? this.fixImg(img) : ''
+    },
+    latestGuideText: function() {
+      for (var i = this.msgs.length - 1; i >= 0; i--) {
+        var m = this.msgs[i]
+        if (m && m.role === 'guide' && m.message) return m.message
+      }
+      return ''
+    },
+    nextSpot: function() {
+      return this.spotCards[this.spotIdx + 1] || null
+    },
+    nextDistanceText: function() {
+      var n = this.nextSpot
+      if (!n) return ''
+      var meters = Number(n.distance_m || n.distance || 0)
+      if (!(meters > 0) && this.fullRouteOverview) {
+        var stops = this.fullRouteOverview.stops || []
+        for (var i = 0; i < stops.length; i++) {
+          if (stops[i].spot_id === n.spot_id) {
+            var leg = (this.fullRouteOverview.legs || [])[i - 1]
+            if (leg && leg.meters) meters = Number(leg.meters)
+            break
+          }
+        }
+      }
+      if (!(meters > 0)) return this.t('步行距离待确认')
+      var walk = meters >= 1000 ? (meters / 1000).toFixed(1) + ' 公里' : Math.round(meters) + ' 米'
+      return this.t('约') + ' ' + walk
     },
     visitedDuration: function() {
       var total = 0
@@ -298,6 +353,8 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
   },
   methods: {
     nextQuote: function () { this.quoteIndex = (this.quoteIndex + 1) % this.quotes.length },
+    // 统计值缺失时卡片显示“—”，写入打卡记录时不存这个占位符
+    statText: function (value) { return value && value !== '—' ? value : '' },
     saveCheckin: function () {
       var self = this
       var sid = self.viewSpotId
@@ -318,8 +375,8 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
           spot_id: sid,
           time: new Date().toISOString(),
           quote: self.quotes[self.quoteIndex] || '',
-          walk: self.cardWalk || '',
-          duration: self.cardDuration || ''
+          walk: self.statText(self.cardWalk),
+          duration: self.statText(self.cardDuration)
         },
         success: function (res) {
           if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -424,7 +481,14 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
         url: BASE_URL + '/tour-experience/checkins',
         method: 'POST',
         header: header,
-        data: { spot_id: sid, time: new Date().toISOString() },
+        // 快速打卡同样写入卡片上的步行/用时/文案，否则我的打卡里这两项永远是“—”
+        data: {
+          spot_id: sid,
+          time: new Date().toISOString(),
+          quote: self.quotes[self.quoteIndex] || '',
+          walk: self.statText(self.cardWalk),
+          duration: self.statText(self.cardDuration)
+        },
         success: function () {
           self.checkinTime = self.formatCheckinTime()
           self.cardVisible = true
@@ -719,7 +783,7 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
         if (d && d.success) {
           var data = d.data
           if(data.live_status===2){self.repairOpen=false;self.routeOverview=null;return false}
-          self.routeOverview=data.remaining_route_overview||data.route_overview||null;self.repairInitial=repairDefaults(data);self.liveCurrentId=data.current_spot_info?.spot_id||0
+          self.fullRouteOverview=data.route_overview||null;self.routeOverview=data.remaining_route_overview||data.route_overview||null;self.repairInitial=repairDefaults(data);self.liveCurrentId=data.current_spot_info?.spot_id||0
           self.msgs = data.conversation || []
           self.localizeChat();self.warmChat()
           if (data.guide_info) {
@@ -755,6 +819,59 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
       }).catch(function(){return false})
     },
     goBack: function() { this.leaveTour() },
+    // 规划已进入导览即视为“用完”：清空景区已选景点，下次规划从空白开始。
+    clearScenicSelection: function() {
+      try {
+        var self = this
+        var auth = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (uni.getStorageSync('token') || '') }
+        uni.request({
+          url: BASE_URL + '/tour-experience/scenic-selection',
+          header: auth,
+          success: function (res) {
+            var list = res && res.data && res.data.data
+            if (!Array.isArray(list) || !list.length) return
+            list.forEach(function (item) {
+              uni.request({ url: BASE_URL + '/tour-experience/scenic-selection/' + (item.id || item.spot_id), method: 'DELETE', header: auth })
+            })
+          }
+        })
+      } catch (error) {}
+    },
+    onSpotTouchStart: function(event) {
+      var touch = event && event.touches && event.touches[0]
+      if (!touch) return
+      this._spotTouch = { x: touch.clientX, y: touch.clientY, lastX: touch.clientX, lastY: touch.clientY }
+    },
+    onSpotTouchMove: function(event) {
+      var touch = event && event.touches && event.touches[0]
+      if (!touch || !this._spotTouch) return
+      this._spotTouch.lastX = touch.clientX
+      this._spotTouch.lastY = touch.clientY
+    },
+    onSpotTouchEnd: function(event) {
+      var start = this._spotTouch
+      this._spotTouch = null
+      if (!start) return
+      var touch = event && event.changedTouches && event.changedTouches[0]
+      var endX = touch ? touch.clientX : start.lastX
+      var endY = touch ? touch.clientY : start.lastY
+      var dx = endX - start.x
+      var dy = endY - start.y
+      if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return
+      if (dx < 0) this.nextSpot()
+      else this.prevSpot()
+    },
+    quickAsk: function(question) {
+      if (this.loading) return
+      this.text = question
+      this.send(question)
+    },
+    // 收起导览：保留会话，回到首页后通过悬浮球继续。
+    collapseTour: function() {
+      if (this.leavingTour) return
+      try { uni.setStorageSync('active-tour-session', { sid: this.sid, guideId: this.guideId, at: Date.now() }) } catch (error) {}
+      this.leaveTour('/pages/tabs/tabs?tab=home')
+    },
     // 重建首页并移除导览页；返回不能依赖渲染层回调或云端响应。
     leaveTour: function(url) {
       if(this.leavingTour)return
@@ -776,6 +893,9 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
       var self=this
       return api.endSession(this.sid).then(function(result){
         if(!result.data||!result.data.success)throw new Error(result.data&&result.data.message||'结束记录保存失败')
+        try { uni.removeStorageSync('active-tour-session') } catch (error) {}
+        // 导览结束：清空景点选择，下次「规划路线」从空白开始
+        self.clearScenicSelection()
         self.leaveTour('/pages/tour-summary/tour-summary?sessionId='+self.sid)
       }).catch(function(){self.endingTour=false;uni.showToast({title:self.t('结束导览保存失败，请重试'),icon:'none'})})
     },
@@ -908,7 +1028,7 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
     stopRecord: function() {this.voicePressing=false;if(this._voiceManager&&this._recordStartedAt)this._voiceManager.stop()},
     cancelRecord: function(){this._recordCancelled=true;this.voicePressing=false;this.recording=false;if(this._voiceManager&&this._recordStartedAt)this._voiceManager.stop()},
   },
-  onBackPress:function(){if(this.repairOpen){if(!this.$refs.routeRepair?.applying)this.repairOpen=false;return true}if(this.showRouteInfo){this.showRouteInfo=false;return true}},
+  onBackPress:function(){if(this.repairOpen){if(!this.$refs.routeRepair?.applying)this.repairOpen=false;return true}if(this.showRouteInfo){this.showRouteInfo=false;return true}this.collapseTour();return true},
   onUnload:function(){this._translationVersion=(this._translationVersion||0)+1;this._turnVersion=(this._turnVersion||0)+1;this._liveVersion=(this._liveVersion||0)+1;this._chatTask?.abort();this.repairOpen=false;this.tourVisible=false;this.cancelRecord();this.stopPlayback();this.closeXingyun();this.stopGps();if(uni.offKeyboardHeightChange&&this._kbListener)uni.offKeyboardHeightChange(this._kbListener)},
   onHide:function(){this.stopGps();this.keyboardHeight=0;this._turnVersion=(this._turnVersion||0)+1;this._chatTask?.abort();this.loading=false;this.repairOpen=false;this.showRouteInfo=false;this.tourVisible=false;this.cancelRecord();this.stopPlayback();this.closeXingyun();
   },
@@ -918,6 +1038,7 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
     this.appXingyun=true
     // #endif
     this.sid = Number(opts.sessionId || 0)
+    if (this.sid) this.clearScenicSelection()
     try{ this.fallbackPoster = opts.poster ? decodeURIComponent(opts.poster) : ''; this.fallbackName = opts.guideName ? decodeURIComponent(opts.guideName) : '' }catch(e){}
     try{ if(this.sid&&opts.access){ uni.setStorageSync('xingyun-tour-'+this.sid, decodeURIComponent(opts.access)) } }catch(e){}
     if (!this.sid) { uni.showToast({title:'会话ID无效',icon:'none'}); return }
@@ -1045,8 +1166,9 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
 
 .ec-ghost:active{transform:scale(.98)}
 .ec-secret{display:block;margin-top:18rpx;text-align:center;font-size:22rpx;color:#a29aad}
-.spot-switch{position:relative;z-index:1;display:flex;align-items:center;gap:8rpx;padding:8rpx 16rpx}
-.ss-arrow{width:44rpx;height:44rpx;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--ng-surface);border:1rpx solid var(--ng-border);font-size:30rpx;color:var(--ng-secondary);flex-shrink:0}
+.spot-switch{position:relative;z-index:1;display:flex;align-items:center;gap:12rpx;padding:8rpx 20rpx}
+.ss-arrow{width:64rpx;height:64rpx;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#ffffff;border:0;box-shadow:0 8rpx 22rpx rgba(90,70,180,.14),inset 0 1rpx 0 #fff;font-size:34rpx;color:#3b3550;flex-shrink:0;transition:transform 160ms cubic-bezier(.2,.8,.2,1)}
+.ss-arrow:active{transform:scale(.92)}
 .ss-card{flex:1;display:flex;gap:12rpx;padding:10rpx 14rpx;background:var(--ng-surface);border-radius:14rpx;border:1rpx solid var(--ng-border);min-width:0}
 .ss-img{width:72rpx;height:72rpx;border-radius:12rpx;flex-shrink:0}
 .ss-img-df{width:72rpx;height:72rpx;border-radius:12rpx;display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.1);font-size:32rpx;flex-shrink:0}
@@ -1168,4 +1290,111 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
 .arrival-narration button{margin:0;min-height:44px;display:flex;align-items:center;padding:0 20rpx;border:0;border-radius:20rpx;background:#eee9fa;color:#6957cd;font-size:24rpx;line-height:1.4}
 .arrival-narration button.enabled{background:#6957cd;color:white}
 .arrival-narration text{flex:1;min-width:0;font-size:22rpx;color:var(--ng-secondary);line-height:1.6}
+/* ===== 智慧导览页（按设计文档改版） ===== */
+.page { background:#ffffff; }
+.nav { display:flex; align-items:center; justify-content:space-between; padding:10rpx 24rpx 6rpx; }
+.nav-collapse { width:64rpx; height:64rpx; display:flex; align-items:center; justify-content:center; background:transparent; box-shadow:none; }
+.nav-collapse:active { transform:scale(.94); }
+.collapse-icon { width:36rpx; height:36rpx; background-color:#3a3550; -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 12H5M11 6l-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 12H5M11 6l-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat; }
+.nav-right { display:flex; align-items:center; gap:16rpx; }
+/* 右上角两个按钮统一成同一种胶囊样式（同「结束」） */
+.nav-remaining, .nav-end { height:64rpx; min-height:64rpx; padding:0 26rpx; border-radius:32rpx; box-sizing:border-box; background:#ffffff; border:1rpx solid rgba(139,120,230,.35); box-shadow:inset 0 1rpx 0 #fff, 0 8rpx 20rpx -12rpx rgba(90,70,180,.3); display:flex; align-items:center; justify-content:center; font-size:24rpx; color:#26294B; flex-shrink:0; }
+.nav-end-text, .nav-remaining-text { font-size:24rpx; line-height:1; color:#26294B; }
+
+/* 数字人区 */
+.guide-stage { position:relative; overflow:hidden; border-radius:0 0 36rpx 36rpx; }
+.stage-scenic { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.18; z-index:0; pointer-events:none; }
+.narration-bubble { position:absolute; left:24rpx; right:24rpx; bottom:18rpx; z-index:3; padding:16rpx 22rpx; border-radius:24rpx; background:rgba(255,255,255,.92); box-shadow:0 8rpx 24rpx rgba(90,70,180,.12); display:flex; align-items:center; gap:12rpx; }
+.nb-text { flex:1; font-size:25rpx; line-height:1.55; color:#26294B; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.nb-wave { display:flex; align-items:flex-end; gap:4rpx; height:26rpx; }
+.nb-wave view { width:6rpx; border-radius:3rpx; background:#A4BFEA; animation:nb-wave .9s ease-in-out infinite; }
+.nb-wave view:nth-child(1){height:12rpx}
+.nb-wave view:nth-child(2){height:24rpx;animation-delay:.12s}
+.nb-wave view:nth-child(3){height:16rpx;animation-delay:.24s}
+@keyframes nb-wave { 0%,100%{transform:scaleY(.6)} 50%{transform:scaleY(1.15)} }
+
+/* 路线进度卡片 */
+.tour-route-card, .tour-next { flex:none; }
+.guide-stage { height:30vh; min-height:220px; }
+.tour-route-card { margin:14rpx 24rpx 0; padding:18rpx 20rpx; border-radius:26rpx; background:#F7F6FC; }
+.trc-head { display:flex; align-items:center; justify-content:space-between; }
+.trc-title { font-size:27rpx; font-weight:700; color:#26294B; }
+.trc-count { font-size:22rpx; color:#6a5a9e; }
+.trc-scroll { margin-top:14rpx; white-space:nowrap; }
+.trc-track { display:flex; align-items:flex-start; }
+.trc-node { position:relative; display:flex; flex-direction:column; align-items:center; min-width:112rpx; padding:0 6rpx; }
+.trc-line { position:absolute; top:18rpx; right:56rpx; left:-56rpx; height:4rpx; background:#DDD7F2; }
+.trc-line.done { background:#A4BFEA; }
+.trc-dot { width:38rpx; height:38rpx; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#ffffff; border:3rpx solid #DDD7F2; color:#6a5a9e; font-size:20rpx; position:relative; z-index:1; }
+.trc-node.done .trc-dot { background:#A4BFEA; border-color:#A4BFEA; color:#ffffff; }
+.trc-node.active .trc-dot { background:#6547ad; border-color:#6547ad; color:#ffffff; box-shadow:0 0 0 6rpx rgba(101,71,173,.16); }
+.trc-check { font-size:20rpx; }
+.trc-name { margin-top:8rpx; font-size:21rpx; color:#6f6685; max-width:120rpx; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.trc-node.active .trc-name { color:#26294B; font-weight:600; }
+
+/* 接下来的游览卡片 */
+.tour-next { margin:14rpx 24rpx 0; padding:18rpx 20rpx 20rpx; border-radius:26rpx; background:#ffffff; box-shadow:0 8rpx 24rpx rgba(90,70,180,.08); }
+.tn-head { display:flex; align-items:center; justify-content:space-between; }
+.tn-head-left { display:flex; align-items:center; gap:10rpx; }
+.tn-head-icon { width:32rpx; height:32rpx; background-color:#6547ad; -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 3 3 10.5l6.5 2.6L12 20l9-17Z'/%3E%3Cpath d='M9.5 13.1 21 3'/%3E%3C/svg%3E") center / contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 3 3 10.5l6.5 2.6L12 20l9-17Z'/%3E%3Cpath d='M9.5 13.1 21 3'/%3E%3C/svg%3E") center / contain no-repeat; }
+.tn-title { font-size:28rpx; font-weight:700; color:#26294B; }
+.tn-more { display:flex; align-items:center; gap:4rpx; font-size:22rpx; color:#6547ad; }
+.tn-arrow { font-size:26rpx; line-height:1; }
+.tn-main { display:flex; gap:18rpx; margin-top:14rpx; align-items:center; }
+.tn-img { width:170rpx; height:120rpx; border-radius:18rpx; flex:none; }
+.tn-img-df { background:#EEF3FB; }
+.tn-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:6rpx; }
+.tn-top { display:flex; align-items:center; gap:10rpx; }
+.tn-tag { font-size:20rpx; color:#4d6fae; background:#dce9fb; border-radius:8rpx; padding:3rpx 10rpx; line-height:1.2; }
+.tn-name { font-size:28rpx; font-weight:700; color:#26294B; }
+.tn-desc { font-size:22rpx; color:#6f6685; line-height:1.45; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.tn-meta { display:flex; align-items:center; gap:12rpx; font-size:21rpx; color:#4b4560; margin-top:2rpx; }
+.tn-meta-item { display:flex; align-items:center; gap:6rpx; }
+.tn-meta-sep { width:2rpx; height:20rpx; background:#e6e1f0; }
+.tn-ico { width:24rpx; height:24rpx; flex:none; }
+.tn-ico-walk { background-color:#3f3a55; -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='13' cy='4.5' r='2'/%3E%3Cpath d='m10 21 2.5-6 2 2.5 3 1.5M8 9.5l2.5-2.5 3 3.5 1.5 3'/%3E%3C/svg%3E") center / contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='13' cy='4.5' r='2'/%3E%3Cpath d='m10 21 2.5-6 2 2.5 3 1.5M8 9.5l2.5-2.5 3 3.5 1.5 3'/%3E%3C/svg%3E") center / contain no-repeat; }
+
+.tour-chips { flex:none; white-space:nowrap; padding:8rpx 24rpx 0; }
+.tour-chip { display:inline-flex; align-items:center; margin-right:48rpx; padding:6rpx 0; border-radius:0; background:transparent; color:#8f8a9f; font-size:24rpx; line-height:1.4; }
+.tour-chip:active { background:transparent; color:#6a5a9e; }
+.ss-desc { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; margin-top:4rpx; font-size:22rpx; line-height:1.45; color:#6f6685; }
+
+/* 当前景点卡片：参考“下一站”卡片的图文行布局 */
+.spot-switch { display:flex; align-items:center; gap:6rpx; margin:12rpx 24rpx 0; flex:none; }
+.ss-arrow { width:48rpx; height:48rpx; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 4rpx 12rpx rgba(90,70,180,.12); flex:none; }
+.ss-card { flex:1; min-width:0; display:flex; gap:18rpx; padding:16rpx; border-radius:24rpx; background:#fff; box-shadow:0 8rpx 24rpx rgba(90,70,180,.08); }
+.ss-img { width:120rpx; height:120rpx; border-radius:16rpx; flex:none; }
+.ss-img-df { background:#EEF3FB; }
+.ss-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:6rpx; }
+.ss-top { display:flex; align-items:center; gap:10rpx; }
+.ss-tag { flex:none; padding:2rpx 10rpx; border-radius:10rpx; background:#EAF2FF; color:#3d6bb3; font-size:19rpx; }
+.ss-name { font-size:28rpx; font-weight:700; color:#26294B; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ss-cat { margin-left:auto; font-size:20rpx; color:#8a7fb0; }
+.ss-desc { font-size:21rpx; line-height:1.4; color:#6f6685; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+.ss-meta { display:flex; align-items:center; gap:10rpx; font-size:21rpx; color:#6f6685; }
+.ss-meta-sep { color:#c9c2dd; }
+.ss-checkin { margin-left:auto; display:flex; align-items:center; gap:6rpx; padding:4rpx 14rpx; border-radius:14rpx; background:#F3F0FD; color:#5c4bc0; font-size:20rpx; }
+.ss-checkin.done { background:#E9F0FB; color:#3d6bb3; }
+
+/* 左上收起按钮：紫边白底圆形，与剩余时间胶囊同风格 */
+.nav-collapse { background:#ffffff !important; border:1px solid rgba(139,120,230,.5); box-shadow:0 6rpx 18rpx rgba(90,70,180,.12); }
+.collapse-icon { border-color:#6547ad; }
+/* 当前景点卡片：占满宽度，时间行放宽不换行 */
+.spot-switch { margin:12rpx 0 0 !important; }
+.spot-switch .ss-card { border-radius: 22rpx !important; }
+.ss-card { width:100%; }
+.ss-meta { flex:1; min-width:0; white-space:nowrap; font-size:20rpx; gap:8rpx; }
+.ss-checkin { flex:none; padding:4rpx 12rpx; font-size:19rpx; }
+.ss-desc { -webkit-line-clamp:1; }
+
+/* 顶部三个控件统一：白底、紫边、同样圆角与高度 */
+.nav-collapse { width:72rpx !important; height:72rpx !important; border-radius:999rpx !important; background:#fff !important; border:1rpx solid rgba(139,120,230,.45); box-shadow:none !important; }
+.nav-remaining { display:flex; align-items:center; height:72rpx; padding:0 24rpx; border-radius:999rpx; background:#fff; border:1rpx solid rgba(139,120,230,.45); color:#26294B; font-size:25rpx; }
+.nav-end { height:72rpx; padding:0 28rpx; border-radius:999rpx; background:#fff; border:1rpx solid rgba(139,120,230,.45); }
+.nav-end-text { font-size:25rpx; color:#26294B; }
+
+/* 宽度统一：数字人舞台与下方卡片保持同一左右边距/圆角 */
+.guide-stage { margin: 0 !important; border-radius: 24rpx; overflow: hidden; }
+.stage-scenic { border-radius: 24rpx; }
+
 </style>
