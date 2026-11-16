@@ -13,6 +13,8 @@ export default {
   },
   onLoad(query) {
     const spotId = query && query.spotId ? String(query.spotId) : ''
+    const view = query && ['plan', 'list', 'catalog', 'journey'].includes(String(query.view)) ? String(query.view) : ''
+    const spotIds = query && /^[0-9]+(,[0-9]+)*$/.test(String(query.spotIds || '')) ? String(query.spotIds) : ''
     let device = ''
     try { device = uni.getStorageSync('device_id') || '' } catch (e) {}
     if (!device) {
@@ -20,7 +22,8 @@ export default {
       try { uni.setStorageSync('device_id', device) } catch (e) {}
     }
     this.deviceId = device
-    this.src = scenicWebOrigin() + '/app/scenic' + (spotId ? '/' + spotId : '') + '?device=' + encodeURIComponent(device)
+    this.src = scenicWebOrigin() + '/app/scenic' + (spotId ? '/' + spotId : '') +
+      '?device=' + encodeURIComponent(device) + (view ? '&view=' + view : '') + (spotIds ? '&spotIds=' + spotIds : '')
 
     // #ifdef APP-PLUS
     const apply = () => {

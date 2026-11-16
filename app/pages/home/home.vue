@@ -64,8 +64,15 @@ export default {
         uni.navigateTo({ url: '/pages/scenic/scenic?spotId=' + spot.spot_id })
         return
       }
-      const query = payload && payload.wander ? '?wander=1' : (payload && payload.featured ? '?featured=1' : '')
-      uni.navigateTo({ url: '/pages/tour-guide/tour-guide' + query })
+      // 随心逛有自己的规划页（WanderPlanner），不进智能导览
+      if (payload && payload.wander && !payload.featured && !payload.route) {
+        uni.navigateTo({ url: '/pages/tour-guide/tour-guide?wander=1' })
+        return
+      }
+      // 主题路线卡片仍打开网页版的规划视图
+      const route = payload && payload.route
+      const spotIds = route && Array.isArray(route.spot_ids) && route.spot_ids.length ? route.spot_ids.join(',') : ''
+      uni.navigateTo({ url: '/pages/scenic/scenic?view=plan' + (spotIds ? '&spotIds=' + spotIds : '') })
     },
   },
 }
