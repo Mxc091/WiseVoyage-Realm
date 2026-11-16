@@ -83,14 +83,11 @@
       }
     },
     {
-      "path": "pages/mine/history",
+      "path": "pages/mine/checkins",
       "style": {
         "navigationStyle": "custom",
-        "disableScroll": false,
-        "navigationBarBackgroundColor": "#f8fafc",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#f8fafc",
-        "backgroundTextStyle": "dark"
+        "disableScroll": true,
+        "backgroundColor": "#f7f4ff"
       }
     },
     {
@@ -102,6 +99,24 @@
         "navigationBarTextStyle": "black",
         "backgroundColor": "#f8fafc",
         "backgroundTextStyle": "dark"
+      }
+    },
+    {
+      "path": "pages/camera/camera",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true,
+        "backgroundColor": "#000000"
+      }
+    },
+    {
+      "path": "pages/scenic/scenic",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true,
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#ffffff",
+        "backgroundColor": "#ffffff"
       }
     }
   ],

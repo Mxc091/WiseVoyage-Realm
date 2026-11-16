@@ -14,7 +14,7 @@
 
     <!-- 标题 -->
     <view class="nav" :style="{paddingTop:statusH+'px'}">
-      <view class="nav-back" @tap="goBack" :aria-label="$t('返回')"><text class="iconfont icon-chevron-left" aria-hidden="true"></text></view>
+      <view class="nav-back" @tap="goBack" :aria-label="$t('返回')"><view class="app-back-icon" aria-hidden="true"></view></view>
       <view class="nav-spacer"></view>
       <text class="nav-clear" v-if="msgs.length" @tap="clearHistory">{{ $t("清空") }}</text>
       <button v-if="chatMode==='guide'" class="qh-spot" :disabled="loading||recognizing" @tap="pickSpot" :aria-label="$t('选择问答景点')">
@@ -143,6 +143,7 @@
         <view v-if="showPhotoChoices" class="photo-popover" :class="{closing:photoClosing}" role="menu">
           <button class="photo-choice" @tap.stop="selectScenicSource(0)">{{ $t('拍照识景') }}</button>
           <button class="photo-choice" @tap.stop="selectScenicSource(1)">{{ $t('从相册选择') }}</button>
+          <button class="photo-choice" @tap.stop="openCameraGuide">{{ $t('镜头导览') }}</button>
         </view>
       </view>
       <view class="voice-btn" :class="{ active: voiceMode }" @tap="toggleVoiceMode">
@@ -160,6 +161,32 @@
     </view>
 
     <NocturneSelect v-if="showQASpots" ref="spotPicker" :title="$t('选择问答景点')" :options="qaOptions" :selected-index="qaSpots.findIndex(spot=>spot.spot_id===qaSpotId)" :anchor="spotAnchor" @change="selectQuestionSpot" @close="closeSpotPicker" />
+
+    <!-- #ifdef APP-PLUS -->
+    <view v-if="cameraOpen" class="camera-guide" :class="{mini:cameraCollapsed}">
+      <camera v-if="!cameraCollapsed" class="camera-view" :device-position="cameraPosition" flash="off" @error="onCameraError"></camera>
+      <view v-if="cameraCollapsed" class="camera-mini" @tap="cameraCollapsed=false">
+        <camera class="camera-mini-view" :device-position="cameraPosition" flash="off"></camera>
+        <view class="camera-mini-expand"><text class="iconfont icon-arrow-up-right"></text></view>
+      </view>
+      <view class="camera-top">
+        <text class="camera-title">镜头导览</text>
+        <view class="camera-top-actions">
+          <view class="camera-chip" @tap="cameraCollapsed=true" v-if="!cameraCollapsed">收起</view>
+          <view class="camera-chip" @tap="closeCamera">关闭</view>
+        </view>
+      </view>
+      <view class="camera-status" v-if="!cameraCollapsed">
+        <view class="camera-dots"><view v-for="i in 3" :key="i" class="camera-dot"></view></view>
+        <text>{{ recognizing ? '正在识别景点…' : '镜头对准景点，我来讲解' }}</text>
+      </view>
+      <view class="camera-controls" v-if="!cameraCollapsed">
+        <view class="camera-side" @tap="albumFromCamera"><text class="camera-side-text">相册</text></view>
+        <view class="camera-shutter" @tap="captureCamera"><view class="camera-shutter-inner"></view></view>
+        <view class="camera-side" @tap="flipCamera"><text class="camera-side-text">翻转</text></view>
+      </view>
+    </view>
+    <!-- #endif -->
 
     <view v-if="undoVisible" class="undo-notice" role="status" :style="keyboardHeight?{bottom:(keyboardHeight+84)+'px'}:null">
       <text>{{ $t(undoKind==='history'?'已清除历史记录':'已清空当前对话') }}</text>
@@ -233,7 +260,7 @@ export default {
   data: function () {
     return {
       chatMode:'guide',qaSpots:[],qaGuides:[],qaSpotId:null,spotAnchor:null,qaSession:null,qaCatalogLoading:false,catalogError:'',showQASpots:false,requestEpoch:0,historyOwner:null,applyingRoute:false,
-      keyboardVisible:false,keyboardHeight:0,recognizing:false,pendingPhoto:'',recognitionError:'',showPhotoChoices:false,photoClosing:false,scrollAnim:false,
+      keyboardVisible:false,keyboardHeight:0,recognizing:false,pendingPhoto:'',recognitionError:'',showPhotoChoices:false,photoClosing:false,scrollAnim:false,cameraOpen:false,cameraPosition:'back',cameraCollapsed:false,cameraSpeak:false,
       undoVisible:false,undoKind:'',showHistory:false, historyTranslating:false, historyTranslationFailed:false, text: '', msgs: [], historyMsgs: [], loading: false, chatScrollTop:0, followBottom:true, chatViewH:0, tabLeaving:false, lastSpotIds: [], recommendSpots: [], recommendLoading: false,recommendedPlan:null,
       nativeChatVoice:false,chatVoicePayload:{},
       voiceError:'',transcribing:false,voiceMode: false, recording: false, voicePressing: false, speaking: false, speakingIndex:-1,ttsLoading:false,ttsPaused:false,
@@ -351,6 +378,7 @@ export default {
     },
     stopReveal:function(){this._revealEpoch=(this._revealEpoch||0)+1;clearTimeout(this._revealTimer);this._revealTimer=null},
     pushAIReply:function(content,extra){
+      if(this._cameraReplyPending){this._cameraReplyPending=false;try{uni.$emit('camera-ai-reply',content)}catch(e){}}
       if(!content)return null
       const index=this.msgs.length
       const reply={role:'ai',content:content,segments:[],cursor:true}
@@ -580,6 +608,38 @@ export default {
       clearTimeout(this._photoCloseTimer)
       this._photoCloseTimer=setTimeout(()=>{this.showPhotoChoices=false;this.photoClosing=false},190)
     },
+    openCameraGuide:function(){
+      if(!uni.getStorageSync('token')){uni.showToast({title:'请先登录',icon:'none'});return}
+      this.closePhotoChoices()
+      const self=this
+      setTimeout(function(){
+        uni.navigateTo({url:'/pages/camera/camera',events:{
+          captured:function(path){
+            if(!path)return
+            self.pendingPhoto=path;self.cameraSpeak=true;self.sendPhoto()
+          },
+          spoken:function(text){
+            if(!text)return
+            self._cameraReplyPending=true
+            self.text=text
+            self.sendText()
+          }
+        }})
+      },200)
+    },
+    closeCamera:function(){this.cameraOpen=false;this.cameraCollapsed=false},
+    flipCamera:function(){this.cameraPosition=this.cameraPosition==='back'?'front':'back'},
+    onCameraError:function(e){this.recognitionError='相机不可用：'+((e&&e.detail&&e.detail.errMsg)||'请检查相机权限')},
+    captureCamera:function(){
+      const self=this
+      const ctx=uni.createCameraContext()
+      if(!ctx||!ctx.takePhoto){this.recognitionError='当前设备不支持镜头导览';return}
+      ctx.takePhoto({quality:'high',success:function(res){
+        self.cameraOpen=false;self.cameraCollapsed=false
+        self.pendingPhoto=res.tempImagePath;self.cameraSpeak=true;self.sendPhoto()
+      },fail:function(){self.recognitionError='拍照失败，请重试'}})
+    },
+    albumFromCamera:function(){this.cameraOpen=false;this.cameraCollapsed=false;this.selectScenicSource(1)},
     selectScenicSource:function(index){
       const source=Number(index)===0?'camera':'album'
       this.closePhotoChoices()
@@ -644,7 +704,8 @@ export default {
           }
         }
         if(!this.isCurrentRequest(epoch,owner))return
-        this.loading=false;this.pushAIReply(reply,{recognition_id:result.recognition_id,recognitionEvidence:result.evidence||'',silent:true})
+        this.loading=false;this.pushAIReply(reply,{recognition_id:result.recognition_id,recognitionEvidence:result.evidence||'',silent:!this.cameraSpeak})
+        this.cameraSpeak=false
       }catch(error){
         if(!this.isCurrentRequest(epoch,owner))return
         const translated=translateTour(error.message||'照片上传失败，请检查网络连接',language)
@@ -903,6 +964,28 @@ export default {
 .photo-choice::after{border:0}
 .photo-choice:active{background:#f3effb}
 .photo-choice + .photo-choice{border-top:1rpx solid var(--ng-border,#eee)}
+.camera-guide{position:fixed;inset:0;z-index:3000;background:#000}
+.camera-view{position:absolute;inset:0;width:100%;height:100%}
+.camera-top{position:absolute;top:calc(env(safe-area-inset-top) + 24rpx);left:24rpx;right:24rpx;display:flex;align-items:center;justify-content:space-between}
+.camera-title{color:#fff;font-size:30rpx;font-weight:600}
+.camera-top-actions{display:flex;gap:12rpx}
+.camera-chip{padding:10rpx 22rpx;border-radius:999rpx;background:rgba(0,0,0,.38);color:#fff;font-size:24rpx}
+.camera-status{position:absolute;left:0;right:0;top:44%;display:flex;flex-direction:column;align-items:center;gap:12rpx;color:#fff;font-size:26rpx}
+.camera-dots{display:flex;gap:10rpx}
+.camera-dot{width:12rpx;height:12rpx;border-radius:50%;background:rgba(255,255,255,.85);animation:cd 1.2s infinite}
+.camera-dot:nth-child(2){animation-delay:.2s}.camera-dot:nth-child(3){animation-delay:.4s}
+@keyframes cd{0%,100%{opacity:.35}50%{opacity:1}}
+.camera-controls{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 40rpx);display:flex;align-items:center;justify-content:space-around;padding:0 60rpx}
+.camera-shutter{width:132rpx;height:132rpx;border-radius:50%;border:6rpx solid rgba(255,255,255,.92);display:grid;place-items:center}
+.camera-shutter-inner{width:100rpx;height:100rpx;border-radius:50%;background:#fff}
+.camera-side{width:96rpx;height:96rpx;border-radius:50%;background:rgba(0,0,0,.38);display:flex;align-items:center;justify-content:center}
+.camera-side-text{color:#fff;font-size:24rpx}
+.camera-mini{position:absolute;right:24rpx;top:calc(env(safe-area-inset-top) + 80rpx);width:220rpx;height:300rpx;border-radius:24rpx;overflow:hidden;box-shadow:0 20rpx 50rpx rgba(0,0,0,.4)}
+.camera-mini-view{width:100%;height:100%}
+.camera-mini-expand{position:absolute;right:8rpx;top:8rpx;width:48rpx;height:48rpx;border-radius:50%;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22rpx}
+.camera-guide.mini{background:transparent;pointer-events:none}
+.camera-guide.mini .camera-mini{pointer-events:auto}
+.camera-guide.mini .camera-top{display:none}
 .photo-popover-mask{position:fixed;inset:0;z-index:1200;background:rgba(20,24,40,.06);animation:photoMaskIn 180ms ease both}
 .photo-popover-mask.closing{animation:photoMaskOut 190ms ease both}
 @keyframes photoMaskOut{from{opacity:1}to{opacity:0}}
@@ -1095,6 +1178,18 @@ export default {
 @keyframes welcomeFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7rpx)}}
 @keyframes welcomeTwinkle{0%,100%{opacity:.5;transform:scale(.9)}50%{opacity:1;transform:scale(1.06)}}
 @media (prefers-reduced-motion:reduce){.welcome-balloon,.welcome-sparkle,.history-panel,.photo-popover{animation:none!important}}
+/* 紫色描边白玻璃统一图标 */
+.chat-ref-page .topic-icon-wrap{background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(248,246,255,.9));border:1rpx solid rgba(139,120,230,.4);box-shadow:inset 0 1rpx 0 #fff,0 6rpx 14rpx -10rpx rgba(90,70,180,.3)}
+.chat-ref-page .topic-icon{color:#5c4bc0}
+.chat-ref-page .context-pin{background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(248,246,255,.9));border:1rpx solid rgba(139,120,230,.4);box-shadow:inset 0 1rpx 0 #fff;color:#5c4bc0}
+.chat-ref-page .context-pin .iconfont{color:#5c4bc0}
+.chat-ref-page .qh-spot{background:rgba(255,255,255,.92);border:1rpx solid rgba(139,120,230,.35);color:#4a3aa8}
+.chat-ref-page .nav-history{background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(248,246,255,.9));border:1rpx solid rgba(139,120,230,.4);box-shadow:inset 0 1rpx 0 #fff,0 6rpx 14rpx -10rpx rgba(90,70,180,.3)}
+.chat-ref-page .hist-clock{color:#5c4bc0}
+.chat-ref-page .photo-add,.chat-ref-page .voice-btn{background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(248,246,255,.9));border:1rpx solid rgba(139,120,230,.4);box-shadow:inset 0 1rpx 0 #fff,0 6rpx 14rpx -10rpx rgba(90,70,180,.3)}
+.chat-ref-page .photo-add .iconfont,.chat-ref-page .voice-btn .iconfont{color:#5c4bc0}
+.chat-ref-page .input-bar .send-btn{background:linear-gradient(135deg,rgba(255,255,255,.96),rgba(248,246,255,.9));border:1rpx solid rgba(139,120,230,.4);color:#4a3aa8;box-shadow:inset 0 1rpx 0 #fff,0 6rpx 14rpx -10rpx rgba(90,70,180,.3)}
+.chat-ref-page .qh-chip{background:rgba(255,255,255,.9);border-color:rgba(139,120,230,.3);color:#4a3aa8}
 @media (max-width:360px){.chat-ref-page .nav{gap:10rpx;padding-left:18rpx;padding-right:18rpx}.nav .qh-spot{max-width:370rpx;padding-right:14rpx;gap:8rpx}.context-name{font-size:24rpx}.welcome-title{font-size:40rpx}.guide-welcome{padding-left:4rpx;padding-right:4rpx;padding-bottom:80rpx}.welcome-topic{padding:14rpx 16rpx;gap:10rpx}.topic-title{font-size:25rpx}.chat-ref-page .input-bar{gap:8rpx;padding-left:14rpx;padding-right:14rpx}.photo-add,.voice-btn{width:76rpx;height:76rpx}.input-bar .msg-input,.input-bar .voice-hold-btn,.send-btn{height:76rpx;line-height:76rpx}.send-btn{padding:0 20rpx}}
 </style>
 

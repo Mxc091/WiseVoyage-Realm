@@ -1,0 +1,99 @@
+<template>
+  <view class="page">
+    <view class="preview-wrap">
+      <CustomPreview ref="CustomPreview" class="preview"></CustomPreview>
+    </view>
+
+    <view class="center">
+      <view class="dots"><view class="dot"></view><view class="dot"></view><view class="dot"></view></view>
+      <text class="hint">{{ listening ? '请说话…' : '你可以开始说话' }}</text>
+    </view>
+
+    <view class="bottom">
+      <view class="btn" @click="toggleListen"><image class="btn-icon" src="/static/icons/cam-mic.png"></image></view>
+      <view class="btn primary" @click="takePhoto"><image class="btn-icon" src="/static/icons/cam-camera.png"></image></view>
+      <view class="btn" @click="close"><image class="btn-icon" src="/static/icons/cam-close.png"></image></view>
+    </view>
+  </view>
+</template>
+<script>
+import { BASE_URL } from '../../common/config.js'
+export default {
+  data: function () { return { textMode: false, myText: '', aiReply: '', listening: false, ready: false } },
+  mounted: function () {
+    const self = this
+    const start = function () {
+      try {
+        self.$refs.CustomPreview.init(5, 2, function (res) {
+          console.log('[CustomPreview]', JSON.stringify(res))
+          if (res.code === 200 && res.data) {
+            try { const ch = self.getOpenerEventChannel && self.getOpenerEventChannel(); if (ch && ch.emit) ch.emit('captured', res.data) } catch (e) {}
+            uni.navigateBack()
+          }
+          if (res.code === 500) uni.showToast({ title: res.message || '相机初始化失败', icon: 'none' })
+        })
+        self.ready = true
+      } catch (e) {
+        uni.showToast({ title: '请用自定义基座运行', icon: 'none' })
+      }
+    }
+    // #ifdef APP-PLUS
+    try { plus.android.requestPermissions(['android.permission.CAMERA'], function () { setTimeout(start, 600) }, function () { setTimeout(start, 600) }) } catch (e) { setTimeout(start, 600) }
+    // #endif
+    // #ifndef APP-PLUS
+    setTimeout(start, 600)
+    // #endif
+    const recorder = uni.getRecorderManager()
+    recorder.onStop(function (res) {
+      self.listening = false
+      const path = res && res.tempFilePath
+      if (!path) return
+      uni.uploadFile({
+        url: BASE_URL + '/tour-session/asr-upload', filePath: path, name: 'file', timeout: 60000,
+        success: function (r) {
+          let d = {}
+          try { d = JSON.parse(r.data) } catch (e) {}
+          const text = typeof d.data === 'string' ? d.data : ''
+          if (text) {
+            self.myText = text
+            try { const ch = self.getOpenerEventChannel && self.getOpenerEventChannel(); if (ch && ch.emit) ch.emit('spoken', text) } catch (e) {}
+          }
+        }
+      })
+    })
+    this._recorder = recorder
+  },
+  onUnload: function () { try { this.$refs.CustomPreview.unbindCamera() } catch (e) {} },
+  methods: {
+    close: function () { uni.navigateBack() },
+    toggleListen: function () {
+      const self = this
+      if (self.listening) { self._recorder && self._recorder.stop(); return }
+      self.listening = true
+      // #ifdef APP-PLUS
+      try { plus.android.requestPermissions(['android.permission.RECORD_AUDIO'], function () { self._recorder.start({ duration: 60000, format: 'mp3' }) }) } catch (e) {}
+      // #endif
+    },
+    takePhoto: function () {
+      if (!this.ready) { uni.showToast({ title: '相机还没准备好', icon: 'none' }); return }
+      try { this.$refs.CustomPreview.takePhoto('/scenic/', 'shot_', '.jpg') } catch (e) { uni.showToast({ title: '拍照失败', icon: 'none' }) }
+    }
+  }
+}
+</script>
+<style>
+.page{flex:1;background-image:linear-gradient(160deg,#fdf6fb,#f4efff,#eef6ff);background-color:#f8f5ff}
+.preview-wrap{position:absolute;right:24rpx;top:150rpx;width:240rpx;height:320rpx;background-color:#000000;border-radius:20rpx;overflow:hidden}
+.preview{width:240rpx;height:320rpx}
+.center{position:absolute;left:40rpx;right:300rpx;top:650rpx}
+.dots{flex-direction:row;margin-bottom:16rpx}
+.dot{width:12rpx;height:12rpx;border-radius:6rpx;background-color:#b9b2c9;margin-right:8rpx}
+.hint{color:#5d5670;font-size:28rpx}
+.lines{flex-direction:column}
+.line-tag{color:#7c6bd0;font-size:22rpx;margin-top:10rpx}
+.line-text{color:#3a3150;font-size:30rpx;line-height:1.6}
+.bottom{position:absolute;left:0;right:0;bottom:80rpx;flex-direction:row;justify-content:center;align-items:center}
+.btn{width:132rpx;height:132rpx;border-radius:66rpx;background-color:#ffffff;margin-left:16rpx;margin-right:16rpx;border-width:1rpx;border-color:rgba(139,120,230,0.35);justify-content:center;align-items:center}
+.primary{background-color:#f0ebff;border-color:#8b78e6}
+.btn-icon{width:56rpx;height:56rpx}
+</style>

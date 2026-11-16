@@ -316,7 +316,10 @@ export default {
       }catch(_){uni.showToast({title:this.t('规划失败，请检查服务'),icon:'none'})}
       finally{this.recommending=false}
     },
-    openDetail:function(s){this.detailScrolled=false;this.detailSpot=s;this.saveHistory(s)},
+    openDetail:function(s){
+  this.saveHistory(s)
+  uni.navigateTo({ url: '/pages/scenic/scenic?spotId=' + s.spot_id })
+},
     onSpotScroll:function(e){this.detailScrolled=(e.detail.scrollTop||0)>24;if(this.$refs.spotSheet)this.$refs.spotSheet.setScroll(e)},
     saveHistory:function(s){req({url:'/spot-favorites/history/'+s.spot_id,method:'PUT'}).then(function(r){if(!r.data.success)throw new Error('Save failed')}).catch(function(){uni.showToast({title:'浏览记录保存失败，请检查网络',icon:'none'})})},
     themeIcon:function(t){var m={comprehensive:'icon-youlan',history:'icon-lishiwenhua',nature:'icon-ziranfengguang',family:'icon-qinzi',photography:'icon-cam-3'};return m[t]||'icon-youlan'},
@@ -384,7 +387,11 @@ export default {
         var ordered=prioritizeSummerPalace(s.spots,s.routes);s.spots=ordered.spots;s.routes=ordered.routes
         var located=s.spots.find(function(x){return x.latitude&&x.longitude});if(located){var point=wgs84ToGcj02(Number(located.latitude),Number(located.longitude));s.mapCenter={latitude:point[0],longitude:point[1]}}
         if(gr&&sr&&rr)s.dataLoaded=true
-        if(!gr||!sr||!rr){if(first)s.error='部分数据加载失败，请重试'}
+        var missing=[]
+        if(!gr)missing.push('伴游')
+        if(!sr)missing.push('景点')
+        if(!rr)missing.push('路线')
+        if(missing.length&&first)s.error=missing.join('、')+'加载失败，请检查服务连接后重试'
         // 进入导览页不自动选景点：上一次 AI 推荐留下的暂存直接丢弃。
         s.restoreAISelection()
         s.loading=false
