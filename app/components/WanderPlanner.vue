@@ -1,8 +1,8 @@
 <template>
   <view class="wander-planner" :class="['stage-'+stage, motionClass]" :style="motionStyle">
     <view class="wander-header">
-      <button class="wander-square" role="button" :aria-label="t('返回')" @tap="back() || $emit('exit')">
-        <WanderIcon name="back" />
+      <button class="wander-square wander-back" role="button" :aria-label="t('返回')" @tap="back() || $emit('exit')">
+        <view class="app-back-icon wander-back-arrow" aria-hidden="true"></view>
       </button>
       <text class="wander-title">{{ t(title) }}</text>
       <view v-if="mode==='time' && stage==='recommended'" class="wander-tools">
@@ -467,12 +467,16 @@ export default {
 
 <style scoped>
 .wander-planner {
-  position:absolute; inset:0; z-index:12; display:flex; flex-direction:column; min-height:0;
+  position:fixed; top:0; left:0; width:100%; height:100vh; height:100dvh; z-index:12;
+  box-sizing:border-box; display:flex; flex-direction:column; min-height:0;
   color:#292c43; background:linear-gradient(151deg,#efedf9 2%,#f7f5fb 94%); padding-top:var(--status-bar-height, 0px); overflow:hidden;
 }
 .wander-header, .wander-content, .wander-footer { width:100%; max-width:540px; margin:0 auto; box-sizing:border-box; padding-inline:20px; }
-.wander-header { min-height:64px; display:flex; align-items:center; gap:10px; padding-block:8px; flex:none; }
-.wander-title { font-size:20px; line-height:1.4; text-wrap:balance; }
+.wander-header { position:relative; min-height:64px; display:flex; align-items:center; padding-block:8px; flex:none; }
+/* 返回箭头在左，标题居中——返回键旁边不再跟页面名字 */
+.wander-title { position:absolute; left:50%; transform:translateX(-50%); max-width:calc(100% - 140px);
+  text-align:center; font-size:20px; line-height:1.4; text-wrap:balance; pointer-events:none; }
+.wander-header > .wander-square, .wander-tools { position:relative; z-index:1; }
 .wander-scroll { flex:1; height:0; min-height:0; }
 .wander-content { display:grid; gap:13px; padding-block:8px 24px; }
 .wander-feature image, .wander-feature-shade { position:absolute; inset:0; width:100%; height:100%; }
@@ -516,7 +520,7 @@ export default {
 .stage-preview .wander-road :deep(.route-dom-map) { height:clamp(152px,22vh,195px); border-radius:18px; }
 .wander-notice { color:#6e5236; }
 .wander-error { color:#963a53; }
-.wander-footer { padding-top:8px; padding-bottom:calc(12px + env(safe-area-inset-bottom)); flex:none; }
+.wander-footer { margin-top:auto; padding-top:8px; padding-bottom:env(safe-area-inset-bottom, 0px); flex:none; }
 .wander-planner .wander-primary, .wander-planner .wander-secondary {
   width:100%; padding:9px 14px; border-radius:16px; display:flex; justify-content:center; align-items:center; gap:8px; font-size:16px;
 }
@@ -531,6 +535,11 @@ export default {
 .wander-tools { margin-left:auto; }
 .wander-tools .wander-square, .wander-header > .wander-square { background:#faf8ff; }
 .wander-header > .wander-square { margin-left:-8px; }
+/* 左上角返回：不要底框，沿用 App 统一的细箭头 */
+.wander-header > .wander-square.wander-back,
+.wander-header > .wander-square.wander-back:active { background:transparent !important; border-radius:0; margin-left:-10px; }
+.wander-header > .wander-square.wander-back::before { display:none !important; }
+.wander-header .wander-back-arrow { width:22px; height:22px; background-color:#282332; }
 .stage-featured, .stage-featuredDetail { background:#fff; }
 .stage-featuredDetail .wander-header > .wander-square {
   position:relative; isolation:isolate; background:transparent;
@@ -585,10 +594,31 @@ export default {
 .wander-modal-scroll { height:min(46vh,400px); }
 .wander-modal-scroll button { width:100%; }
 .style-heading { margin:6px 0; }
-.style-choice[aria-pressed="true"] { box-shadow:inset 0 0 0 1px #bca7e7; background:#faf7ff; color:#483278; }
+/* 随心逛风格卡：选中态 = 紫色描边 + 白玻璃 */
+.wander-planner .style-choice { min-height:76px; padding:14px 16px; border-radius:24px; background:#fff;
+  box-shadow:inset 0 0 0 1rpx rgba(130,110,210,.10), 0 14rpx 28rpx -30rpx rgba(64,44,120,.5);
+  transition:background .18s ease, box-shadow .18s ease, transform .12s ease; }
+.wander-planner .style-choice:active { transform:scale(.985); }
+.wander-planner .style-choice .wander-symbol { width:46px; height:46px; border-radius:14px; background:#f2edff; color:#6547ad !important;
+  transition:background .18s ease, color .18s ease; }
+.wander-planner .style-choice > text { font-size:17px; color:#282332; transition:color .18s ease; }
+.wander-planner .style-choice > .wander-icon { color:#c3bad6; margin-right:2px; transition:color .18s ease; }
+.wander-planner .style-choice[aria-pressed="true"] {
+  background:rgba(255,255,255,.64);
+  -webkit-backdrop-filter:blur(18px) saturate(1.12);
+  backdrop-filter:blur(18px) saturate(1.12);
+  box-shadow:inset 0 0 0 2rpx #6a5ae0, inset 0 1rpx 0 rgba(255,255,255,.85), 0 18rpx 34rpx -30rpx rgba(64,44,120,.5); }
+.wander-planner .style-choice[aria-pressed="true"] .wander-symbol {
+  background:rgba(255,255,255,.9); color:#5b49c9 !important;
+  box-shadow:inset 0 0 0 1rpx rgba(106,90,224,.32); }
+.wander-planner .style-choice[aria-pressed="true"] > text { color:#4a3a86; font-weight:600; }
+.wander-planner .style-choice[aria-pressed="true"] > .wander-icon { color:#6a5ae0; }
 .candidate-list { display:grid; gap:6px; margin-bottom:4px; }
 .wander-planner .candidate-option { display:flex; align-items:center; gap:10px; padding:9px; width:100%; background:#f5f1fa; border-radius:15px; text-align:left; }
-.candidate-option[aria-pressed="true"] { background:#efe6fb; box-shadow:inset 0 0 0 1px #c8b3e5; }
+.wander-planner .candidate-option[aria-pressed="true"] { background:linear-gradient(135deg,#f2ebff 0%,#eaf1ff 100%);
+  box-shadow:inset 0 0 0 1rpx rgba(106,90,224,.18); }
+.wander-planner .candidate-option[aria-pressed="true"] .wander-symbol { background:#6a5ae0; color:#fff !important; }
+.wander-planner .candidate-option[aria-pressed="true"] > view:nth-child(2) text:first-child { color:#4a3a86; font-weight:600; }
 .candidate-option > view:nth-child(2) { flex:1; display:grid; gap:2px; min-width:0; }
 .candidate-option text+text { color:#605476; font-size:13px; }
 @media(max-height:730px) { .wander-intro{padding:18px 0 30px} .wander-link.blind-choice+.blind-choice{margin-top:24px} }
