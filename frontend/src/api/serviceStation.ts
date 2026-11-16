@@ -60,7 +60,24 @@ export interface StationVisit {
   expires_at: string
 }
 export type StationTheme = 'history' | 'nature' | 'photography' | 'family'
+export interface CompanionWish { first: number; backup: number | null }
+export interface RouteAdjustment {
+  changes: Pick<StationPlanningInput, 'spot_ids' | 'end_area' | 'avoid_steps' | 'budget'>
+  stop_ids: number[]
+  minutes: number
+  meters: number
+}
+export interface StationRouteProfile {
+  note: string
+  matches: Record<number, string>
+  less_walking: boolean
+  unresolved: string[]
+}
 export interface StationPlanningInput {
+  personalization?: StationRouteProfile
+  party?: CompanionWish[]
+  compare_with_steps?: boolean
+  expected_network_version?: string
   pace?: 'standard' | 'relaxed'
   skip_ids?: number[]
   dwell_minutes?: Record<number, number>
@@ -132,7 +149,7 @@ export const defaultStationPreferences = (): StationPreferences => ({
 
 export function stationError(error: unknown): string {
   const detail = (error as any)?.response?.data?.detail
-  return typeof detail === 'string' ? detail : '服务暂不可用，请重试'
+  return typeof detail === 'string' ? detail : typeof detail?.message === 'string' ? detail.message : '服务暂不可用，请重试'
 }
 export function getStation(id: string, signal?: AbortSignal) {
   return request_handler
@@ -174,6 +191,14 @@ export function extendStationVisit(visit: StationVisit) {
     { headers: headers(visit), timeout: 8000 }
   )
 }
+export async function interpretStationRoute(visit: StationVisit, note: string, preferences: StationPlanningInput, signal?: AbortSignal) {
+  const response = await request_handler.post<Pick<StationPlanningInput,
+    'spot_ids' | 'skip_ids' | 'pace' | 'interest_weights' | 'avoid_steps' | 'compare_with_steps' | 'fill_time' | 'personalization'
+  >>('/service-stations/visits/' + visit.visit_id + '/route-intent', { note, preferences }, {
+    headers: headers(visit), signal, timeout: 38000
+  })
+  return response.data
+}
 export function planAtStation(
   visit: StationVisit,
   prefs: StationPlanningInput,
@@ -182,7 +207,7 @@ export function planAtStation(
   return request_handler
     .post<{
       plans: StationPlan[]
-    }>('/service-stations/visits/' + visit.visit_id + '/plans', prefs, {
+    }>('/service-stations/visits/' + visit.visit_id + '/plans', { ...prefs, compare_conflicts: true }, {
       headers: headers(visit),
       signal,
       timeout: 20000

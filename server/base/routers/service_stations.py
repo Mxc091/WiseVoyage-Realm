@@ -15,7 +15,9 @@ from ..database.digital_guide_db import _asset_url
 from ..models.station_models import ServiceStation, StationVisit, StationPlan, StationClaim, StationClaimCode, utcnow
 from .users import get_current_user_info
 from ..models.tour_models import ScenicSpotInfo, DigitalGuideInfo, TourSessionInfo, TourSessionStatus
-from ..modules.station_service import anchors, station_anchor, plan_walk, extract_request, consultation, english_local_answer
+from ..modules.station_service import anchors, station_anchor, StationRouteConflict, extract_request, consultation, english_local_answer
+from ..modules.station_intent import RouteProfile, intent_prompt, apply_intent, IntentConflict
+from ..modules.station_choices import group_walk, repair_choices
 from ..modules.walking_network import access_point, route_between, NETWORK, network_version
 from ..modules.xingyun_access import require_guide_admin, selectable
 
@@ -124,7 +126,18 @@ class VisitInput(BaseModel):
     language: Literal['zh', 'en'] = 'zh'
 
 
+class CompanionWish(BaseModel):
+    first: int = Field(gt=0)
+    backup: int | None = Field(default=None, gt=0)
+
+
 class PlanInput(BaseModel):
+    personalization: RouteProfile | None = None
+    party: list[CompanionWish] = Field(default_factory=list, max_length=4)
+    expected_network_version: str = Field(default="", max_length=128)
+    compare_conflicts: bool = False
+    compare_with_steps: bool = True
+
     budget: int = Field(default=120, ge=20, le=480)
     pace: Literal['standard', 'relaxed'] = 'standard'
     start_time: str = Field(default="", pattern=r"^(?:$|(?:[01]\d|2[0-3]):[0-5]\d)$")
@@ -141,9 +154,26 @@ class PlanInput(BaseModel):
 
 
 def store_plans(db, visit, station, body):
-    prefs = body.model_dump()
+    prefs = body.model_dump(exclude={"compare_conflicts", "expected_network_version"})
     graph_version = network_version()
-    try: options = plan_walk(station, catalog(db), prefs)
+    if body.expected_network_version and body.expected_network_version != graph_version:
+        raise HTTPException(409, '步行路网已更新，请重新比较方案')
+    spots = catalog(db)
+    if prefs['party']:
+        known = {s['spot_id'] for s in spots if access_point(s)}
+        if len(prefs['party']) < 2 or any(m['first'] not in known or m['backup'] == m['first']
+                or (m['backup'] is not None and m['backup'] not in known) for m in prefs['party']):
+            raise HTTPException(422, '请为 2 至 4 位同行者分别选择有效的首选景点，每人的备选须与首选不同')
+        if not prefs['spot_ids']:
+            prefs['spot_ids'] = list(dict.fromkeys(m['first'] for m in prefs['party']))
+    try: options = group_walk(station, spots, prefs)
+    except StationRouteConflict as exc:
+        if not body.compare_conflicts:
+            raise HTTPException(422, str(exc)) from exc
+        alternatives = repair_choices(station, spots, prefs, body.compare_with_steps)
+        if graph_version != network_version():
+            raise HTTPException(409, '步行路网已更新，请重新规划')
+        raise HTTPException(422, dict(message=str(exc), alternatives=alternatives, network_version=graph_version)) from exc
     except ValueError as exc: raise HTTPException(422, str(exc)) from exc
     if graph_version != network_version():
         raise HTTPException(409, "步行路网已更新，请重新规划")
@@ -213,6 +243,35 @@ def finish_visit(visit_id: str, x_station_token: str = Header(default='')):
         # A separately minted claim snapshot survives ending the public terminal.
         db.commit()
         return dict(ok=True)
+
+
+class StationIntentInput(BaseModel):
+    note: str = Field(min_length=1, max_length=500)
+    preferences: PlanInput
+
+
+@router.post('/visits/{visit_id}/route-intent')
+async def interpret_route_request(visit_id: str, body: StationIntentInput, x_station_token: str = Header(default='')):
+    from .llm import get_tour_llm_res
+    from .tour_chat import _llm_is_configured
+    with Session(DB_ENGINE) as db:
+        visit_get(db, visit_id, x_station_token)
+        spots = catalog(db)
+    note = body.note.strip()
+    english = body.preferences.language == 'en'
+    if not note:
+        raise HTTPException(422, 'Enter an extra request.' if english else '请填写额外需求')
+    unavailable = ('The request could not be interpreted. Retry or clear it to plan with the form.'
+                   if english else '额外需求暂未解析成功。请重试，或清空额外需求后按表单条件规划。')
+    if not _llm_is_configured():
+        raise HTTPException(503, unavailable)
+    try:
+        raw = await get_tour_llm_res(intent_prompt(note, spots), json_mode=True, timeout=32)
+        return apply_intent(raw, note, spots, body.preferences.model_dump())
+    except IntentConflict as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, unavailable) from exc
 
 
 @router.post('/visits/{visit_id}/plans')

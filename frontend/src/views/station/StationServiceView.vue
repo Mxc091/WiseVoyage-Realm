@@ -41,6 +41,7 @@ import {
   endStationVisit,
   extendStationVisit,
   planAtStation,
+  interpretStationRoute,
   consultStation,
   speakAtStation,
   shareStationPlan,
@@ -53,6 +54,8 @@ import {
   type StationPlan,
   type StationReply,
   type StationPlanningInput,
+  type CompanionWish,
+  type RouteAdjustment,
   type StationSpot,
   type StationDirections
 } from '@/api/serviceStation'
@@ -80,6 +83,52 @@ const prefs = reactive(defaultStationPlanningInput()),
   plans = ref<StationPlan[]>([]),
   planIndex = ref(0),
   planStale = ref(false)
+const groupMode = ref(false)
+const blankWish = (): CompanionWish => ({ first: 0, backup: null })
+const companions = ref<CompanionWish[]>([blankWish(), blankWish()])
+const strictSteps = ref(false)
+const adjustments = ref<RouteAdjustment[]>([])
+const extraRequest = ref('')
+const interpreting = ref(false)
+const interpreted = ref<{ signature: string; input: StationPlanningInput } | null>(null)
+const comparedVersion = ref('')
+const acceptedGroupIds = ref<number[] | null>(null)
+watch([groupMode, companions], () => { acceptedGroupIds.value = null }, { deep: true, flush: 'sync' })
+const groupReady = computed(() => !groupMode.value || companions.value.every(m => m.first > 0))
+function planningInput(): StationPlanningInput {
+  const input = { ...prefs, language: locale.value }
+  if (groupMode.value && groupReady.value) {
+    const party = companions.value.map(m => ({ ...m }))
+    return { ...input, party, spot_ids: acceptedGroupIds.value || [...new Set(party.map(m => m.first))], fill_time: false,
+      compare_with_steps: !strictSteps.value }
+  }
+  return strictSteps.value ? { ...input, compare_with_steps: false } : input
+}
+const planningSignature = computed(() => JSON.stringify([prefs, groupMode.value, companions.value, strictSteps.value, acceptedGroupIds.value, extraRequest.value]))
+function spotLabel(id: number) {
+  return t(catalog.value?.spots.find(s => s.spot_id === id)?.spot_name || String(id))
+}
+function wishResult(member: CompanionWish, ids: number[]) {
+  if (ids.includes(member.first)) return S('首选', 'First choice') + ' · ' + spotLabel(member.first)
+  if (member.backup && ids.includes(member.backup)) return S('备选', 'Backup') + ' · ' + spotLabel(member.backup)
+  return S('未纳入首选', 'First choice omitted') + ' · ' + spotLabel(member.first)
+}
+function exitLabel(area: StationPlanningInput['end_area']) {
+  const gate = exits.find(e => e.area === area)!
+  return S(gate.zh, gate.en)
+}
+function adjustmentDetails(choice: RouteAdjustment) {
+  const before = interpreted.value?.input || planningInput(), after = choice.changes
+  const lines: string[] = []
+  if (before.avoid_steps && !after.avoid_steps) lines.push(S('允许经过已标注台阶', 'Allow marked steps'))
+  if (before.end_area !== after.end_area) {
+    lines.push(S('终点改为', 'Finish at ') + exitLabel(after.end_area))
+  }
+  if (before.budget !== after.budget) lines.push(S('预算增加至 ', 'Extend budget to ') + metricTime(after.budget))
+  const removed = before.spot_ids.filter(id => !choice.stop_ids.includes(id))
+  if (removed.length) lines.push(S('本次略过 ', 'Omit ') + removed.map(spotLabel).join('、'))
+  return lines
+}
 const themes = [
   ['history', '历史文化', 'History'], ['nature', '自然风光', 'Nature'],
   ['photography', '摄影', 'Photography'], ['family', '亲子', 'Family']
@@ -393,6 +442,7 @@ async function go(next: Task) {
   stopSpeech()
   stopListening()
   error.value = ''
+  adjustments.value = []
   task.value = next
   if (next === 'home') return
   if (next !== 'explore' && next !== 'chat') selectedSpot.value = null
@@ -431,6 +481,7 @@ function stopListening() {
   previous?.abort()
 }
 function cancel() {
+  interpreting.value = false
   version++
   controller?.abort()
   busy.value = false
@@ -471,6 +522,13 @@ function reset(reconnect = true) {
   listenError.value = ''
   planStale.value = false
   task.value = 'home'
+  extraRequest.value = ''
+  interpreted.value = null
+  interpreting.value = false
+  groupMode.value = false
+  companions.value = [blankWish(), blankWish()]
+  strictSteps.value = false
+  adjustments.value = []
   Object.assign(prefs, defaultStationPlanningInput())
   endAreaConfirmed.value = false
   setLocale(station.value?.default_language || 'zh')
@@ -501,8 +559,9 @@ function chooseEndArea(area: StationPlanningInput['end_area']) {
   endAreaConfirmed.value = true
   error.value = ''
 }
-async function calculate() {
+async function calculate(choice?: RouteAdjustment) {
   if (busy.value || offline.value) return
+  if (!groupReady.value) return
   if (!endAreaConfirmed.value) {
     error.value = S('请选择离园出口，或选择返回本站。', 'Choose an exit or return to this station.')
     await nextTick()
@@ -510,6 +569,10 @@ async function calculate() {
     endpointOptions.value?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true })
     return
   }
+  const submitted = planningSignature.value
+  let input = planningInput()
+  const note = extraRequest.value.trim()
+  adjustments.value = []
   const own = ++version
   controller?.abort()
   controller = new AbortController()
@@ -519,14 +582,32 @@ async function calculate() {
   try {
     const v = await ensureVisit()
     if (!v || own !== version) return
-    const submitted = JSON.stringify(prefs)
+    if (note) {
+      if (interpreted.value?.signature === submitted) {
+        input = interpreted.value.input
+      } else {
+        interpreting.value = true
+        const changes = await interpretStationRoute(v, note, input, controller.signal)
+        if (disposed || own !== version || submitted !== planningSignature.value) return
+        interpreting.value = false
+        input = { ...input, ...changes }
+        interpreted.value = { signature: submitted, input }
+      }
+    }
+    if (choice) input = { ...input, ...choice.changes, expected_network_version: comparedVersion.value }
     const data = await planAtStation(
       v,
-      { ...prefs, spot_ids: [...prefs.spot_ids], language: locale.value },
+      input,
       controller.signal
     )
     if (disposed || own !== version) return
-    if (submitted !== JSON.stringify(prefs)) return
+    if (submitted !== planningSignature.value) return
+    if (choice) {
+      const { budget, end_area, avoid_steps, spot_ids } = choice.changes
+      Object.assign(prefs, { budget, end_area, avoid_steps })
+      if (groupMode.value) acceptedGroupIds.value = [...spot_ids]
+      else prefs.spot_ids = [...spot_ids]
+    }
     plans.value = data.plans
     planIndex.value = 0
     planStale.value = false
@@ -535,13 +616,15 @@ async function calculate() {
     task.value = 'result'
     showShare.value = false
   } catch (e: any) {
-    if (own === version && e.code !== 'ERR_CANCELED') {
+    if (own === version && submitted === planningSignature.value && e.code !== 'ERR_CANCELED') {
+      comparedVersion.value = e.response?.data?.detail?.network_version || ''
+      adjustments.value = e.response?.data?.detail?.alternatives || []
       handleError(e)
       await nextTick()
       planningActions.value?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
     }
   } finally {
-    if (own === version) busy.value = false
+    if (own === version) { busy.value = false; interpreting.value = false }
     idle.touch()
   }
 }
@@ -574,7 +657,7 @@ async function ask(value = question.value) {
       {
         question: value,
         language: locale.value,
-        preferences: { ...prefs, language: locale.value },
+        preferences: planningInput(),
         end_area_confirmed: endAreaConfirmed.value,
         awaiting_end_area: !!reply.value?.needs_end_area && !endAreaConfirmed.value,
         spot_id: selectedSpot.value?.spot_id,
@@ -848,13 +931,17 @@ watch(locale, () => {
   idle.touch()
 })
 watch(
-  () => JSON.stringify(prefs),
+  planningSignature,
   () => {
+    interpreted.value = null
+    adjustments.value = []
+    error.value = ''
     if (plans.value.length) {
       planStale.value = true
       showShare.value = false
     }
-  }
+  },
+  { flush: 'sync' }
 )
 watch(planIndex, () => {
   showShare.value = false
@@ -1206,6 +1293,10 @@ function backToAttractions() {
                     }}</small></span
                   ></label
                 >
+                <label v-if="prefs.avoid_steps" class="station-strict-setting">
+                  <input type="checkbox" v-model="strictSteps" />
+                  {{ S('仅比较避开台阶的备选方案', 'Only compare alternatives that avoid steps') }}
+                </label>
                   </div>
                 </div>
                 <details class="station-planner-settings">
@@ -1233,11 +1324,47 @@ function backToAttractions() {
                   </fieldset>
                   <fieldset><legend>{{ S('您想略过的景点', 'Attractions you would like to skip') }}</legend>
                     <div class="station-choice-row"><button v-for="spot in catalog.spots" :key="spot.spot_id"
-                      :disabled="prefs.spot_ids.includes(spot.spot_id)" :aria-pressed="prefs.skip_ids.includes(spot.spot_id)"
+                      :disabled="groupMode ? companions.some(m => m.first === spot.spot_id || m.backup === spot.spot_id) : prefs.spot_ids.includes(spot.spot_id)" :aria-pressed="prefs.skip_ids.includes(spot.spot_id)"
                       @click="prefs.skip_ids = prefs.skip_ids.includes(spot.spot_id) ? prefs.skip_ids.filter(id => id !== spot.spot_id) : [...prefs.skip_ids, spot.spot_id]">{{ t(spot.spot_name) }}</button></div>
                   </fieldset>
                 </details>
-                <section class="station-manual-stops" aria-labelledby="station-manual-stops-title">
+                <label class="station-extra-request">
+                  <strong>{{ S('额外需求（选填）','Extra requests (optional)') }}</strong>
+                  <textarea v-model="extraRequest" maxlength="500" rows="2"
+                    :placeholder="S('例如：带孩子看石桥和铜牛，想在湖边拍照，尽量少走路。','For example: We want to see bridges and the Bronze Ox with our child, take lakeside photos and keep the walk short.')" />
+                </label>
+                <div class="station-choice-row station-party-toggle" role="group" :aria-label="S('选点方式','Planning mode')">
+                  <button :aria-pressed="!groupMode" @click="groupMode = false">{{ S('个人选点','Individual') }}</button>
+                  <button :aria-pressed="groupMode" @click="groupMode = true">{{ S('我们一起选','Plan together') }}</button>
+                </div>
+                <section v-if="groupMode" class="station-manual-stops station-party">
+                  <header class="station-manual-heading">
+                    <h2>{{ S('同行者的心愿','Our wish list') }}</h2>
+                    <button v-if="companions.length < 4" class="station-clear-stops" @click="companions.push(blankWish())">{{ S('添加同行者','Add a person') }}</button>
+                  </header>
+                  <p>{{ S('每人选一处最想去的景点，还可以再选一处备选。可选择同一景点同行。','Choose one first choice per person and an optional backup. Shared picks count for everyone who chose them.') }}</p>
+                  <p v-if="acceptedGroupIds && companions.some(m => !acceptedGroupIds?.includes(m.first))">
+                    {{ S('已采用调整后的同行方案。','The adjusted group choices are active.') }}
+                    <button class="station-clear-stops" @click="acceptedGroupIds = null">{{ S('恢复全部首选','Restore all first choices') }}</button>
+                  </p>
+                  <div v-for="(member, i) in companions" :key="i" class="station-member">
+                    <strong>{{ S('同行者 ', 'Visitor ') }}{{ i + 1 }}</strong>
+                    <label>{{ S('首选景点','First choice') }}
+                      <select v-model="member.first" @change="member.first === member.backup && (member.backup = null)">
+                        <option :value="0" disabled>{{ S('请选择','Choose a stop') }}</option>
+                        <option v-for="spot in catalog.spots" :key="spot.spot_id" :disabled="prefs.skip_ids.includes(spot.spot_id)" :value="spot.spot_id">{{ t(spot.spot_name) }}</option>
+                      </select>
+                    </label>
+                    <label>{{ S('备选景点','Backup') }}
+                      <select v-model="member.backup">
+                        <option :value="null">{{ S('不指定','None') }}</option>
+                        <option v-for="spot in catalog.spots" :key="spot.spot_id" :disabled="member.first === spot.spot_id || prefs.skip_ids.includes(spot.spot_id)" :value="spot.spot_id">{{ t(spot.spot_name) }}</option>
+                      </select>
+                    </label>
+                    <button v-if="companions.length > 2" class="station-clear-stops" @click="companions.splice(i, 1)">{{ S('移除','Remove') }}</button>
+                  </div>
+                </section>
+                <section v-else class="station-manual-stops" aria-labelledby="station-manual-stops-title">
                   <header class="station-manual-heading">
                     <h2 id="station-manual-stops-title">
                       <MapLocation aria-hidden="true" />{{
@@ -1299,6 +1426,15 @@ function backToAttractions() {
               <div v-if="error" class="station-plan-error" role="alert" aria-live="assertive">
                 <WarningFilled aria-hidden="true" /><span>{{ t(error) }}</span>
               </div>
+              <section v-if="adjustments.length" class="station-adjustments" :aria-label="S('可行方案','Feasible alternatives')">
+                <article v-for="choice in adjustments" :key="JSON.stringify(choice.changes)">
+                  <h3>{{ adjustmentDetails(choice).join(S('；',' · ')) }}</h3>
+                  <strong>{{ metricTime(choice.minutes) }} · {{ distance(choice.meters) }}</strong>
+                  <p>{{ [...choice.stop_ids.map(spotLabel), exitLabel(choice.changes.end_area)].join(' → ') }}</p>
+                  <template v-if="groupMode"><p v-for="(member, i) in companions" :key="i">{{ S('同行者 ', 'Visitor ') }}{{ i + 1 }} · {{ wishResult(member, choice.stop_ids) }}</p></template>
+                  <button class="station-secondary" :disabled="busy" @click="calculate(choice)">{{ S('采用此方案','Use this option') }}</button>
+                </article>
+              </section>
               <div class="station-inline-footer">
                 <span
                   ><Location aria-hidden="true" />{{ S('起点', 'Start') }} · {{ stationName }}</span
@@ -1307,15 +1443,16 @@ function backToAttractions() {
                   :disabled="
                     busy ||
                     offline ||
+                    !groupReady ||
                     !Number.isFinite(prefs.budget) ||
                     prefs.budget < 20 ||
                     prefs.budget > 480
                   "
-                  @click="calculate"
+                  @click="calculate()"
                 >
                   {{
                     busy
-                      ? S('正在计算步行方案…', 'Calculating your walk…')
+                      ? interpreting ? S('正在理解您的需求…', 'Interpreting your request…') : S('正在计算步行方案…', 'Calculating your walk…')
                       : S('生成路线', 'Create my walking plan')
                   }}
                   <ArrowRight aria-hidden="true" />
@@ -1349,6 +1486,26 @@ function backToAttractions() {
                   <span>{{ S('离园出口', 'Exit') }}</span><strong>{{ plan.preferences.end_area === 'return' ? S('返回本站', 'Return here') : t(plan.route.exit_leg?.to_name || exits.find(exit => exit.area === plan.preferences.end_area)?.zh || '—') }}</strong>
                 </div>
               </div>
+              <section v-if="plan.preferences.personalization" class="station-personal-result station-manual-stops">
+                <h2>{{ S('路线如何回应您的需求','How this route fits your request') }}</h2>
+                <p>{{ plan.preferences.personalization.note }}</p>
+                <p>{{ S('规划条件','Planning settings') }} · {{ plan.preferences.pace === 'relaxed' ? S('慢行多休息','Relaxed pace') : S('标准步速','Standard pace') }}
+                  <template v-if="plan.preferences.avoid_steps"> · {{ S('避开已标注台阶','Avoid marked steps') }}</template>
+                  <template v-if="plan.preferences.personalization.less_walking"> · {{ S('优先少走路','Prefer less walking') }}</template>
+                  <template v-for="[key, zh, en] in themes" :key="key"><template v-if="(plan.preferences.interest_weights?.[key] ?? 0) > 0"> · {{ S(zh,en) }}</template></template>
+                </p>
+                <p v-if="plan.preferences.skip_ids?.length">{{ S('已略过','Excluded') }} · {{ plan.preferences.skip_ids.map(spotLabel).join('、') }}</p>
+                <ul v-if="plan.route.stops.some(s => plan.preferences.personalization?.matches[s.spot_id])">
+                  <template v-for="stop in plan.route.stops" :key="stop.spot_id">
+                    <li v-if="plan.preferences.personalization.matches[stop.spot_id]"><strong>{{ t(stop.spot_name) }}</strong> · {{ plan.preferences.personalization.matches[stop.spot_id].replace(/;/g, '、') }}</li>
+                  </template>
+                </ul>
+                <p v-if="plan.preferences.personalization.unresolved.length">{{ S('本方案未核实或未纳入','Unverified or outside this plan') }} · {{ plan.preferences.personalization.unresolved.join('、') }}</p>
+              </section>
+              <section v-if="plan.preferences.party?.length" class="station-manual-stops station-party-outcome">
+                <h2>{{ S('同行者心愿','Group wishes') }}</h2>
+                <p v-for="(member, i) in plan.preferences.party" :key="i">{{ S('同行者 ', 'Visitor ') }}{{ i+1 }} · {{ wishResult(member, plan.route.stops.map(s => s.spot_id)) }}</p>
+              </section>
               <p v-if="plan.kind === 'stairs'" class="station-route-update">
                 {{ S('同样的景点，少走已标台阶路段', 'Same stops, less walking on mapped stairs') }}
                 {{ plan.stairs_saved }} m · {{ S('增加用时', 'Additional time') }} {{ metricTime(plan.extra_minutes ?? 0) }}
@@ -1431,7 +1588,7 @@ function backToAttractions() {
                     'Route details or information changed. Recalculate before pickup.'
                   )
                 }}
-                <button @click="calculate" :disabled="busy || offline">
+                <button @click="calculate()" :disabled="busy || offline">
                   {{ S('重新计算', 'Recalculate') }} <ArrowUpRight aria-hidden="true" />
                 </button>
               </p>
