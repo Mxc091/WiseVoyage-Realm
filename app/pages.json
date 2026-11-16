@@ -101,15 +101,7 @@
         "backgroundTextStyle": "dark"
       }
     },
-    {
-      "path": "pages/camera/camera",
-      "style": {
-        "navigationStyle": "custom",
-        "disableScroll": true,
-        "backgroundColor": "#000000"
-      }
-    },
-    {
+{
       "path": "pages/scenic/scenic",
       "style": {
         "navigationStyle": "custom",

@@ -2,11 +2,11 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const root=path.resolve(__dirname,'..')
 function shell(){
  const calls=[],events={},panels=[0,1,2].map(index=>({$options:Object.fromEntries(['onLoad','onReady','onShow','onHide','onUnload'].map(hook=>[hook,function(){calls.push([index,hook])}]))}))
- const context={TourGuide:{},AiChat:{},Mine:{},TabDock:{},console,Math,Number,String,Object,Array,setTimeout,clearTimeout,uni:{getSystemInfoSync:()=>({windowWidth:393}),hideKeyboard(){},$on:(event,fn)=>events[event]=fn,$off:event=>delete events[event]}}
+ const context={Home:{},TourGuide:{},AiChat:{},Mine:{},TabDock:{},console,Math,Number,String,Object,Array,setTimeout,clearTimeout,uni:{getSystemInfoSync:()=>({windowWidth:393}),hideKeyboard(){},$on:(event,fn)=>events[event]=fn,$off:event=>delete events[event]}}
  vm.createContext(context)
  const source=fs.readFileSync(path.join(root,'pages/tabs/tabs.vue'),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1]
  vm.runInContext(source.replace(/^import .*$/gm,'').replace('export default','globalThis.options='),context)
- const o=context.options,s={$refs:{tour:panels[0],ai:panels[1],mine:panels[2]},$nextTick:fn=>fn()};Object.assign(s,o.data.call(s))
+ const o=context.options,s={$refs:{home:panels[0],tour:panels[0],ai:panels[1],mine:panels[2]},$nextTick:fn=>fn()};Object.assign(s,o.data.call(s))
  for(const [key,fn] of Object.entries(o.methods))s[key]=fn.bind(s)
  for(const [key,fn] of Object.entries(o.computed))Object.defineProperty(s,key,{get:fn.bind(s)})
  o.onLoad.call(s,{});o.onShow.call(s);o.mounted.call(s)

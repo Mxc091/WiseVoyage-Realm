@@ -1,7 +1,7 @@
 <template>
   <view class="tabs-shell">
-    <swiper class="pager-viewport" :current="pagerCurrent" :duration="260" :circular="false" :disable-touch="dockHidden" :skip-hidden-item-layout="false" @change="onPagerChange" @animationfinish="onPagerFinish">
-      <swiper-item><view class="panel-slot"><TourGuide ref="tour" /></view></swiper-item>
+    <swiper class="pager-viewport" :current="pagerCurrent" :duration="260" :circular="false" :disable-touch="pagerLocked" :skip-hidden-item-layout="false" @change="onPagerChange" @animationfinish="onPagerFinish">
+      <swiper-item><view class="panel-slot"><Home ref="home" :active="pagerCurrent === 0" @ai="onHomeAi" @map-change="homeMap = $event" /></view></swiper-item>
       <swiper-item><view class="panel-slot"><AiChat ref="ai" /></view></swiper-item>
       <swiper-item><view class="panel-slot"><Mine ref="mine" /></view></swiper-item>
     </swiper>
@@ -9,32 +9,36 @@
   </view>
 </template>
 <script>
-import TourGuide from '../tour-guide/tour-guide.vue'
+import Home from '../home/home.vue'
 import AiChat from '../ai-chat/ai-chat.vue'
 import Mine from '../mine/mine.vue'
 import TabDock from '../../components/TabDock.vue'
 
-const validIndex = index => Number.isInteger(index) && index >= 0 && index < 3
+const TAB_KEYS = ['home', 'ai', 'mine']
+const validIndex = index => Number.isInteger(index) && index >= 0 && index < TAB_KEYS.length
 export default {
-  components: { TourGuide, AiChat, Mine, TabDock },
+  components: { Home, AiChat, Mine, TabDock },
   data() {
     return { current: 0, pagerCurrent: 0, pendingTab: null, switching: false,
       panelReady: false, shellVisible: false, shownPanel: null, initialized: [false, false, false],
-      keyboardOpen: false, itineraryOpen: false }
+      keyboardOpen: false, itineraryOpen: false, homeMap: false }
   },
   computed: {
+    // 底部 Tab 栏只在键盘/导览全屏时收起；首页展开地图时保持可见
     dockHidden() { return this.keyboardOpen || this.itineraryOpen },
+    // 展开地图时仍锁定左右翻页，避免在图上横滑误切 Tab
+    pagerLocked() { return this.dockHidden || this.homeMap },
     aiHidden() { return this.pagerCurrent === 1 },
   },
   onLoad(query) {
-    const index = ['tour', 'ai', 'mine'].indexOf((query && query.tab) || 'tour')
+    const index = TAB_KEYS.indexOf((query && query.tab) || 'home')
     this.current = this.pagerCurrent = index < 0 ? 0 : index
     this._onKeyboard = event => { this.keyboardOpen = !!(event && event.height > 0) }
     if (uni.onKeyboardHeightChange) uni.onKeyboardHeightChange(this._onKeyboard)
     this._onDockSync = payload => { if (payload && payload.source === 'tour') this.itineraryOpen = !!payload.hide }
     this._onTabsSelect = payload => {
-      const key = typeof payload === 'string' ? payload : (payload && payload.tab) || 'tour'
-      this.selectTab(['tour', 'ai', 'mine'].indexOf(key))
+      const key = typeof payload === 'string' ? payload : (payload && payload.tab) || 'home'
+      this.selectTab(TAB_KEYS.indexOf(key))
     }
     uni.$on('dock:sync', this._onDockSync)
     uni.$on('tabs:select', this._onTabsSelect)
@@ -57,14 +61,14 @@ export default {
   onUnload() {
     this.shellVisible = false
     this.hidePanel()
-    for (let i = 0; i < 3; i++) if (this.initialized[i]) this.callHook(i, 'onUnload')
+    for (let i = 0; i < TAB_KEYS.length; i++) if (this.initialized[i]) this.callHook(i, 'onUnload')
     if (uni.offKeyboardHeightChange && this._onKeyboard) uni.offKeyboardHeightChange(this._onKeyboard)
     uni.$off('dock:sync', this._onDockSync)
     uni.$off('tabs:select', this._onTabsSelect)
   },
   onBackPress() { return this.callHook(this.current, 'onBackPress') },
   methods: {
-    panel(index) { return [this.$refs.tour, this.$refs.ai, this.$refs.mine][index] || null },
+    panel(index) { return [this.$refs.home, this.$refs.ai, this.$refs.mine][index] || null },
     // Embedded pages retain their component instances; forward page hooks only when visible.
     hookFns(raw, output) {
       if (!raw) return output
@@ -103,6 +107,18 @@ export default {
       this.preparePanel(this.current)
       this.shownPanel = this.current
       this.callHook(this.current, 'onShow')
+    },
+    // 首页「问 AI / 语音 / 拍照」按钮带上模式：切到 AI 页后直接进入对应流程。
+    onHomeAi(payload) {
+      this.selectTab(1)
+      const mode = payload && payload.mode
+      if (mode !== 'camera') return
+      const open = () => {
+        const ai = this.$refs.ai
+        if (ai && typeof ai.openCamera === 'function') ai.openCamera()
+      }
+      // 等翻页动画落定再拉起相机，避免相机盖在切换动画上。
+      setTimeout(open, 300)
     },
     selectTab(index) {
       if (!validIndex(index)) return

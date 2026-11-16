@@ -75,13 +75,15 @@
   },
   "玉带桥": {
     "url": "/scenic/enhanced/jade-belt-bridge.jpg",
-    "original_url": "/scenic/jade-belt-bridge.jpg",
     "source": "User-supplied original photograph"
   },
   "文昌阁": {
     "url": "/scenic/enhanced/wenchang-pavilion.jpg",
-    "original_url": "/scenic/wenchang-pavilion.jpg",
     "source": "User-supplied original photograph",
     "position": "70% center"
+  },
+  "智远楼": {
+    "url": "/scenic/enhanced/zhiyuan-building.jpg",
+    "source": "user-provided"
   }
 }

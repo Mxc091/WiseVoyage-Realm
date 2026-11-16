@@ -192,7 +192,7 @@ export default {
 
       keyboardHeight:0,inputHeight:0,textareaFocus:false,showEndConfirm: false,tourVisible:true,leavingTour:false,endingTour:false,appXingyun:false,xingyunPayload:{},xingyunConnected:false,xingyunFailed:false,xingyunActive:false,
       chatTranslating:false,chatTranslationFailed:false,
-      showRouteInfo:false,repairOpen:false,repairOpening:false,repairPrompt:'',repairInitial:{},routeOverview:null,liveCurrentId:0,
+      showRouteInfo:false,repairOpen:false,repairOpening:false,repairPrompt:'',repairInitial:{},routeOverview:null,fullRouteOverview:null,liveCurrentId:0,
       sid: 0, msgs: [], spotCards: [], spotIdx: 0, progressActive: -1, progressScrollLeft: 0, fadeLeft: false, fadeRight: false, progressTrackW: 0, progressContentW: 0, progressNodeW: 100,
       guideName: '', guideNameEn: '', guideSourceVideo:'', guideProvider:'', statusH: 20, fallbackPoster:'', fallbackName:'', checkedSpotId:0, checkinBusy:false, cardVisible:false, checkinTime:'',
     quoteIndex:0, quotes:['不知道去哪的时候，就随便走走吧','慢慢走，才看得见风景','这一站，值得停下来看看','走过的路，都会变成故事'], cardPhoto:'',
@@ -221,7 +221,20 @@ export default {
     cardWalk: function () {
       var s = this.currentSpot || {}
       var meters = Number(s.distance_m || s.distance || 0)
-      return meters > 0 ? (meters / 1000).toFixed(1) + ' 公里' : '—'
+      // 景点接口不带距离时，用整条路线里“上一站→本站”的步行段补上（第一站取入园段）
+      if (!(meters > 0) && this.fullRouteOverview) {
+        var ov = this.fullRouteOverview
+        var stops = ov.stops || []
+        for (var i = 0; i < stops.length; i++) {
+          if (stops[i].spot_id === s.spot_id) {
+            var leg = i === 0 ? ov.entry_leg : (ov.legs && ov.legs[i - 1])
+            if (leg && leg.meters) meters = Number(leg.meters)
+            break
+          }
+        }
+      }
+      if (!(meters > 0)) return '—'
+      return meters >= 1000 ? (meters / 1000).toFixed(1) + ' 公里' : Math.round(meters) + ' 米'
     },
     cardDuration: function () {
       var s = this.currentSpot || {}
@@ -298,6 +311,8 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
   },
   methods: {
     nextQuote: function () { this.quoteIndex = (this.quoteIndex + 1) % this.quotes.length },
+    // 统计值缺失时卡片显示“—”，写入打卡记录时不存这个占位符
+    statText: function (value) { return value && value !== '—' ? value : '' },
     saveCheckin: function () {
       var self = this
       var sid = self.viewSpotId
@@ -318,8 +333,8 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
           spot_id: sid,
           time: new Date().toISOString(),
           quote: self.quotes[self.quoteIndex] || '',
-          walk: self.cardWalk || '',
-          duration: self.cardDuration || ''
+          walk: self.statText(self.cardWalk),
+          duration: self.statText(self.cardDuration)
         },
         success: function (res) {
           if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -424,7 +439,14 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
         url: BASE_URL + '/tour-experience/checkins',
         method: 'POST',
         header: header,
-        data: { spot_id: sid, time: new Date().toISOString() },
+        // 快速打卡同样写入卡片上的步行/用时/文案，否则我的打卡里这两项永远是“—”
+        data: {
+          spot_id: sid,
+          time: new Date().toISOString(),
+          quote: self.quotes[self.quoteIndex] || '',
+          walk: self.statText(self.cardWalk),
+          duration: self.statText(self.cardDuration)
+        },
         success: function () {
           self.checkinTime = self.formatCheckinTime()
           self.cardVisible = true
@@ -719,7 +741,7 @@ guideDisplayName: function() { if (this.tourLanguage === 'en' && this.guideNameE
         if (d && d.success) {
           var data = d.data
           if(data.live_status===2){self.repairOpen=false;self.routeOverview=null;return false}
-          self.routeOverview=data.remaining_route_overview||data.route_overview||null;self.repairInitial=repairDefaults(data);self.liveCurrentId=data.current_spot_info?.spot_id||0
+          self.fullRouteOverview=data.route_overview||null;self.routeOverview=data.remaining_route_overview||data.route_overview||null;self.repairInitial=repairDefaults(data);self.liveCurrentId=data.current_spot_info?.spot_id||0
           self.msgs = data.conversation || []
           self.localizeChat();self.warmChat()
           if (data.guide_info) {

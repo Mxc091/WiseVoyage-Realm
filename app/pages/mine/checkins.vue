@@ -4,6 +4,7 @@
     <view class="app-status-bar-shield" aria-hidden="true"></view>
     <!-- #endif -->
     <view class="aurora-background" aria-hidden="true"></view>
+    <view class="hand-paper" aria-hidden="true"></view>
     <view class="nav" :style="{paddingTop:headerTop+'px'}">
       <view class="nav-back" @tap="goBack" role="button" aria-label="返回">
         <view class="app-back-icon"></view>
@@ -19,7 +20,11 @@
         <text class="empty-hint">打开景点详情 → 开始导览 → 地图步行 → 到达打卡，打卡后会出现在这里。</text>
         <button class="empty-cta" @tap="goScenic">去景点打卡</button>
       </view>
-      <view v-else class="stack">
+      <view v-else>
+        <view class="hand-head">
+          <text class="hand-head-count">已集章 <text class="hand-num">{{ items.length }}</text> 枚</text>
+        </view>
+        <view class="stack">
         <view
           v-for="(item, idx) in stackItems"
           :key="item.id"
@@ -31,18 +36,29 @@
           @touchend="onEnd"
           @tap="idx === 0 ? preview(item) : null"
         >
-          <image v-if="item.image" class="card-cover card-photo" :src="item.image" mode="aspectFill" />
-          <view v-else class="card-cover card-cover-empty card-photo"></view>
-          <view class="card-panel">
-            <text class="card-name">{{ item.spot_name }}</text>
-            <text class="card-quote">{{ item.quote ? '「' + item.quote + '」' : '「不知道去哪的时候，就随便走吧」' }}</text>
-            <view class="card-stats">
-              <view class="card-stat"><text class="stat-label">步行</text><text class="stat-value">{{ item.walk || '—' }}</text></view>
-              <view class="card-stat"><text class="stat-label">用时</text><text class="stat-value">{{ item.duration || item.time }}</text></view>
-              <view class="card-stat"><text class="stat-label">日期</text><text class="stat-value">{{ item.dayText }}</text></view>
+          <view class="hand-card">
+            <view class="hand-tape" aria-hidden="true"></view>
+            <view class="hand-photo-wrap">
+              <image v-if="item.image" class="hand-photo" :src="item.image" mode="aspectFill" />
+              <view v-else class="hand-photo hand-photo-empty"></view>
+              <view class="hand-seal" aria-hidden="true">
+                <text class="seal-park">颐和园</text>
+                <text class="seal-name">{{ item.spot_name }}</text>
+                <text class="seal-date">{{ item.dayText || '打卡' }}</text>
+              </view>
             </view>
-            <view class="card-del" @tap.stop="remove(item)" role="button" aria-label="删除"><text>删除</text></view>
+            <view class="hand-panel">
+              <text class="card-name">{{ item.spot_name }}</text>
+              <text class="card-quote">{{ item.quote ? '「' + item.quote + '」' : '「不知道去哪的时候，就随便走吧」' }}</text>
+              <view class="card-stats">
+                <view class="card-stat"><text class="stat-label">步行</text><text class="stat-value">{{ item.walk || '—' }}</text></view>
+                <view class="card-stat"><text class="stat-label">用时</text><text class="stat-value">{{ item.duration || '—' }}</text></view>
+                <view class="card-stat"><text class="stat-label">日期</text><text class="stat-value">{{ item.dayText || '—' }}</text></view>
+              </view>
+              <view class="card-del" @tap.stop="remove(item)" role="button" aria-label="删除"><text>删除</text></view>
+            </view>
           </view>
+        </view>
         </view>
       </view>
     </scroll-view>
@@ -50,7 +66,7 @@
 </template>
 
 <script>
-import { BASE_URL, scenicWebOrigin } from '../../common/config.js'
+import { BASE_URL } from '../../common/config.js'
 import { SCENIC_COVERS } from '../../common/scenic-covers.js'
 export default {
   data: function () {
@@ -120,7 +136,7 @@ export default {
     imageUrl: function (path) {
       if (!path) return ''
       if (/^https?:/.test(path)) return path
-      if (path.indexOf('/scenic/') === 0) return scenicWebOrigin() + path
+      if (path.indexOf('/scenic/') === 0) return '/static' + path
       return path
     },
     onRefresh: function () {
@@ -163,7 +179,7 @@ export default {
           try { localCards = uni.getStorageSync('my_checkin_cards') || {} } catch (e) {}
           self.items = rows.map(function (r) {
             var img = self.imageUrl(r.image_path)
-            if (!img && SCENIC_COVERS[r.spot_name]) img = scenicWebOrigin() + SCENIC_COVERS[r.spot_name]
+            if (!img && SCENIC_COVERS[r.spot_name]) img = SCENIC_COVERS[r.spot_name]
             var d = new Date(r.time)
             var dayText = isNaN(d.getTime()) ? '' : (d.getMonth() + 1) + '月' + d.getDate() + '日'
             return { id: r.id, spot_name: r.spot_name, time: self.formatTime(r.time), image: img,
@@ -206,18 +222,34 @@ export default {
 .empty-cta { margin-top: 36rpx; min-height: 88rpx; padding: 0 48rpx; border-radius: 24rpx; background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(246,242,255,.94)); border: 1rpx solid rgba(130,110,210,.32); box-shadow: inset 0 1rpx 0 #fff, 0 14rpx 30rpx -22rpx rgba(70,50,130,.35); color: #44358f; font-size: 30rpx; line-height: 88rpx; transition: transform 160ms cubic-bezier(.2,.8,.2,1), opacity 160ms; }
 .empty-cta:active { transform: scale(.96); }
 .list { padding-top: 12rpx; }
-.stack { position: relative; height: 1120rpx; margin: 6rpx calc(32rpx - 3px) 0; overflow: visible; }
-.stack-card { position: absolute; left: 0; right: 0; top: 0; width: auto; box-sizing: border-box; overflow: hidden; border-radius: 28rpx; overflow: hidden; background: #ffffff; border: 1rpx solid rgba(130,110,210,.16); box-shadow: 0 18rpx 40rpx -30rpx rgba(70,50,130,.38); transform-origin: 50% 100%; will-change: transform; }
-.stack-card .card-photo { height: 620rpx; }
-.card-panel { padding: 30rpx 34rpx 34rpx; position: relative; }
-.card-quote { display: block; margin: 16rpx 0 26rpx; font-size: 30rpx; line-height: 1.6; color: #4a4458; }
-.card-stats { display: flex; align-items: flex-end; }
-.card-stat { flex: 1; display: flex; flex-direction: column; }
-.stat-label { font-size: 24rpx; color: #a29aad; margin-bottom: 8rpx; }
-.stat-value { font-size: 34rpx; color: #282332; font-weight: 600; }
-.card-panel .card-del { position: absolute; right: 26rpx; top: 26rpx; }
-.stack-card.top { box-shadow: 0 26rpx 50rpx -28rpx rgba(70,50,130,.45); }
-.stack-hint { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-size: 24rpx; color: #a29aad; }
+.hand-paper { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(120,100,190,.035) 0 1rpx, transparent 1rpx 6rpx); }
+.hand-head { display: flex; align-items: baseline; justify-content: flex-end; margin: 10rpx 32rpx 18rpx; }
+.hand-head-count { font-size: 22rpx; color: #a29aad; }
+.hand-num { font-size: 30rpx; color: #6547ad; font-weight: 600; margin: 0 4rpx; }
+.stack { position: relative; height: 1040rpx; margin: 0 calc(32rpx - 3px); overflow: visible; }
+.stack-card { position: absolute; left: 0; right: 0; top: 0; width: auto; box-sizing: border-box; overflow: visible; border-radius: 0; background: transparent; transform-origin: 50% 100%; will-change: transform; }
+.hand-card { position: relative; padding: 16rpx 16rpx 0; background: #ffffff; border: 1rpx solid rgba(130,110,210,.14); border-radius: 26rpx; box-shadow: 0 26rpx 54rpx -34rpx rgba(64,44,120,.42); transform: rotate(-.8deg); }
+.stack-card:not(.top) .hand-card { transform: rotate(.6deg); }
+.hand-tape { position: absolute; top: -14rpx; left: 50%; width: 170rpx; height: 44rpx; margin-left: -85rpx; z-index: 4; transform: rotate(-2.5deg); background: rgba(208,198,240,.72); border-left: 1rpx dashed rgba(120,100,190,.45); border-right: 1rpx dashed rgba(120,100,190,.45); box-shadow: 0 2rpx 6rpx rgba(70,50,130,.12); }
+.hand-photo-wrap { position: relative; border-radius: 18rpx; background: #f1ecff; }
+.hand-photo { display: block; width: 100%; height: 600rpx; border-radius: 18rpx; overflow: hidden; }
+.hand-photo-empty { background: linear-gradient(135deg, #f4efff, #e9f3ff); }
+.hand-seal { position: absolute; right: 24rpx; bottom: 24rpx; width: 126rpx; height: 126rpx; border-radius: 50%; border: 3rpx solid rgba(101,71,173,.72); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2rpx; color: #6547ad; transform: rotate(-11deg); background: rgba(251,248,255,.38); }
+.hand-seal::after { content: ""; position: absolute; inset: 8rpx; border: 1rpx solid rgba(101,71,173,.45); border-radius: 50%; }
+.seal-park { font-size: 16rpx; line-height: 1; letter-spacing: 4rpx; }
+.seal-name { font-size: 22rpx; line-height: 1.2; font-weight: 600; letter-spacing: 1rpx; }
+.seal-date { font-size: 15rpx; line-height: 1; letter-spacing: 1rpx; opacity: .85; }
+.hand-panel { position: relative; padding: 24rpx 18rpx 30rpx; }
+.card-quote { display: block; margin: 12rpx 0 0; font-size: 28rpx; line-height: 1.65; color: #5c5370; }
+.card-stats { display: flex; align-items: stretch; margin-top: 22rpx; padding-top: 18rpx; border-top: 1rpx dashed rgba(130,110,210,.28); }
+.card-stat { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 0 14rpx; }
+.card-stat:first-child { align-items: flex-start; padding-left: 0; }
+.card-stat:last-child { padding-right: 0; }
+.card-stat + .card-stat { border-left: 1rpx dashed rgba(130,110,210,.24); }
+.stat-label { font-size: 20rpx; line-height: 1.3; letter-spacing: 3rpx; color: #a29aad; margin-bottom: 8rpx; }
+.stat-value { display: block; max-width: 100%; font-size: 28rpx; line-height: 1.3; color: #3e3652; font-weight: 600; letter-spacing: 1rpx; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hand-panel .card-del { position: absolute; right: 18rpx; top: 24rpx; color: #a29aad; }
+.stack-card.top .hand-card { box-shadow: 0 30rpx 60rpx -34rpx rgba(64,44,120,.5); }
 .card { display: flex; flex-direction: column; margin-bottom: 26rpx; border-radius: 28rpx; overflow: hidden; background: #ffffff; border: 1rpx solid rgba(130,110,210,.16); box-shadow: 0 18rpx 40rpx -30rpx rgba(70,50,130,.38); }
 .card-cover { width: 100%; height: 420rpx; display: block; background: #f1ecff; }
 .card-cover-empty { background: linear-gradient(135deg, #f4efff, #e9f3ff); }
@@ -228,6 +260,6 @@ export default {
 
 
 .card-icon { width: 36rpx; height: 36rpx; }
-.card-name { display: block; font-size: 36rpx; font-weight: 600; color: #282332; }
+.card-name { display: block; padding-right: 92rpx; font-size: 36rpx; line-height: 1.3; font-weight: 600; color: #282332; }
 .card-time { display: block; margin-top: 6rpx; font-size: 25rpx; color: #7d7590; font-variant-numeric: tabular-nums; }
 </style>

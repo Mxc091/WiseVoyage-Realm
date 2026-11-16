@@ -11,24 +11,27 @@
     </view>
     <view v-if="!expanded" class="park-map-reveal" @touchstart="startPull($event, 1)" @touchmove="movePull"
       @touchend="endPull" @touchcancel="resetPull" />
+    <view class="park-status-veil" aria-hidden="true"></view>
     <view class="park-content-layer">
-    <scroll-view :scroll-y="!expanded && !dragging" :aria-hidden="expanded" class="park-page" :show-scrollbar="false">
-      <view class="park-content">
+    <scroll-view :scroll-y="!expanded && !dragging" :aria-hidden="expanded" class="park-page" :show-scrollbar="false"
+      @scroll="onPageScroll">
+      <view class="park-content" @touchstart.capture="pagePullStart" @touchmove.capture="pagePullMove"
+        @touchend.capture="pagePullEnd" @touchcancel.capture="resetPull">
         <view class="park-action-panel" @touchstart="startPull($event, 1)" @touchmove="movePull"
           @touchend="endPull" @touchcancel="resetPull">
           <view class="park-actions">
-            <button :aria-label="t('景点详情')" @tap="$emit('planning', {})">
-              <view class="park-action-icon"><WanderIcon name="pin" /></view>
+            <button :aria-label="t('景点详情')" @tap="$emit('catalog')">
+              <view class="park-action-icon park-icon-pin" aria-hidden="true"></view>
               <text class="park-action-name">{{ t('景点详情') }}</text>
             </button>
             <button :aria-label="t('随心逛')" @tap="$emit('planning', { wander: true })">
-              <view class="park-action-icon"><WanderIcon name="compass" /></view>
+              <view class="park-action-icon park-icon-compass" aria-hidden="true"></view>
               <text class="park-action-name">{{ t('随心逛') }}</text>
             </button>
           </view>
         </view>
         <button class="park-section-heading" :aria-label="t('查看全部主题路线')" @tap="$emit('planning', { wander: true, featured: true })">
-          <text>{{ t('主题路线') }}</text><WanderIcon name="next" />
+          <text>{{ t('主题路线') }}</text><view class="park-section-arrow" aria-hidden="true"></view>
         </button>
         <view v-if="featured.length" class="park-carousel" role="region" :aria-label="t('主题路线')">
           <swiper :current="carouselIndex" :circular="featured.length > 2" :duration="320" previous-margin="56rpx" next-margin="56rpx"
@@ -178,20 +181,20 @@
 
 <script>
 import ParkMap from './ParkMap.vue'
-import WanderIcon from './WanderIcon.vue'
 import { ACCESS_ROUTES, FACILITIES, STEP_LINES, WEATHER_REFRESH_MS,
   accessibleRoads, featuredRoads, homeRoutes, loadParkWeather, scenicMarkers } from '../common/park-home-data.js'
 
 export default {
-  components: { ParkMap, WanderIcon },
+  components: { ParkMap },
   props: { spots: Array, routes: Array, catalogError: String, active: Boolean, selectedRouteId: [String, Number] },
-  emits: ['planning', 'ai', 'retry', 'map-change'],
+  emits: ['planning', 'catalog', 'ai', 'retry', 'map-change'],
   data() {
     const initialCard = homeRoutes(this.routes || [], this.spots || []).findIndex(route => route.route_id === this.selectedRouteId)
     return {
       expanded: false, carouselIndex: Math.max(0, initialCard), pull: 0, dragging: false, query: '', searchOpen: false,
       provider: '', mapAction: null, location: null, activeItem: null, lastSpot: null,
       panel: '', panelClosing: false, showSteps: false, showAccessible: false, accessibleLines: [], roadMessage: '',
+      pageScrollTop: 0,
       weather: null, weatherError: '', weatherOpen: false,
       featuredLines: [], followingHeading: false, heading: null,
       facilities: FACILITIES, officialRoutes: ACCESS_ROUTES,
@@ -235,7 +238,12 @@ export default {
     selectedRoute: { immediate: true, handler: 'loadFeaturedRoads' },
     active(value) {
       if (value && this.expanded) this.startWeatherRefresh()
-      if (!value) { this.stopHeading(); this.stopWeatherRefresh() }
+      if (!value) {
+        // 切到别的 Tab 时收起大图，避免回到首页还是全屏地图
+        if (this.expanded) this.closeMap()
+        this.stopHeading()
+        this.stopWeatherRefresh()
+      }
     },
   },
   mounted() {
@@ -268,6 +276,22 @@ export default {
       if (event.touches.length !== 1) { this.resetPull(); return }
       this.beginPull(event.touches[0], direction)
     },
+    // Let the whole content sheet drag down (not just the map strip) so the
+    // sheet collapses smoothly from anywhere once the list is at its top.
+    onPageScroll(event) {
+      this.pageScrollTop = Math.max(0, Number(event && event.detail && event.detail.scrollTop) || 0)
+    },
+    pagePullStart(event) {
+      if (this.expanded || this.pageScrollTop > 0) return
+      if (!event.touches || event.touches.length !== 1) return
+      this.beginPull(event.touches[0], 1)
+    },
+    pagePullMove(event) {
+      if (!this._pullStart || this.expanded) return
+      if (this.pageScrollTop > 0 || !event.touches || event.touches.length !== 1) { this.resetPull(); return }
+      this.updatePull(event.touches[0])
+    },
+    pagePullEnd(event) { this.finishPull(event.changedTouches && event.changedTouches[0]) },
     movePull(event) {
       if (event.touches.length !== 1) { this.resetPull(); return }
       this.updatePull(event.touches[0])

@@ -1,7 +1,6 @@
 <template>
-  <svg class="wander-icon" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    <path :d="paths[name]" />
-  </svg>
+  <!-- App 端内联 <svg> 不渲染，这里用 CSS mask 输出同一套 Lucide 线条图标 -->
+  <view class="wander-icon" :style="iconStyle" aria-hidden="true"></view>
 </template>
 
 <script>
@@ -32,9 +31,34 @@ const paths = {
   pause: 'M9 5v14m6-14v14',
   play: 'm8 5 12 7-12 7Z',
 }
-export default { props: { name: String }, data: () => ({ paths }) }
+export default {
+  props: { name: String },
+  data: () => ({ paths }),
+  computed: {
+    iconStyle() {
+      const d = this.paths[this.name] || ''
+      const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='" + d + "'/></svg>"
+      return { '--wander-icon': 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")' }
+    },
+  },
+}
 </script>
 
 <style scoped>
-.wander-icon { display:block; flex:none; width:20px; height:20px; pointer-events:none; }
+.wander-icon {
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  background-color: currentColor;
+  -webkit-mask-image: var(--wander-icon);
+  mask-image: var(--wander-icon);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
 </style>

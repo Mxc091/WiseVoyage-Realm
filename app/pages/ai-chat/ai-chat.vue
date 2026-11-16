@@ -143,7 +143,6 @@
         <view v-if="showPhotoChoices" class="photo-popover" :class="{closing:photoClosing}" role="menu">
           <button class="photo-choice" @tap.stop="selectScenicSource(0)">{{ $t('拍照识景') }}</button>
           <button class="photo-choice" @tap.stop="selectScenicSource(1)">{{ $t('从相册选择') }}</button>
-          <button class="photo-choice" @tap.stop="openCameraGuide">{{ $t('镜头导览') }}</button>
         </view>
       </view>
       <view class="voice-btn" :class="{ active: voiceMode }" @tap="toggleVoiceMode">
@@ -162,31 +161,7 @@
 
     <NocturneSelect v-if="showQASpots" ref="spotPicker" :title="$t('选择问答景点')" :options="qaOptions" :selected-index="qaSpots.findIndex(spot=>spot.spot_id===qaSpotId)" :anchor="spotAnchor" @change="selectQuestionSpot" @close="closeSpotPicker" />
 
-    <!-- #ifdef APP-PLUS -->
-    <view v-if="cameraOpen" class="camera-guide" :class="{mini:cameraCollapsed}">
-      <camera v-if="!cameraCollapsed" class="camera-view" :device-position="cameraPosition" flash="off" @error="onCameraError"></camera>
-      <view v-if="cameraCollapsed" class="camera-mini" @tap="cameraCollapsed=false">
-        <camera class="camera-mini-view" :device-position="cameraPosition" flash="off"></camera>
-        <view class="camera-mini-expand"><text class="iconfont icon-arrow-up-right"></text></view>
-      </view>
-      <view class="camera-top">
-        <text class="camera-title">镜头导览</text>
-        <view class="camera-top-actions">
-          <view class="camera-chip" @tap="cameraCollapsed=true" v-if="!cameraCollapsed">收起</view>
-          <view class="camera-chip" @tap="closeCamera">关闭</view>
-        </view>
-      </view>
-      <view class="camera-status" v-if="!cameraCollapsed">
-        <view class="camera-dots"><view v-for="i in 3" :key="i" class="camera-dot"></view></view>
-        <text>{{ recognizing ? '正在识别景点…' : '镜头对准景点，我来讲解' }}</text>
-      </view>
-      <view class="camera-controls" v-if="!cameraCollapsed">
-        <view class="camera-side" @tap="albumFromCamera"><text class="camera-side-text">相册</text></view>
-        <view class="camera-shutter" @tap="captureCamera"><view class="camera-shutter-inner"></view></view>
-        <view class="camera-side" @tap="flipCamera"><text class="camera-side-text">翻转</text></view>
-      </view>
-    </view>
-    <!-- #endif -->
+
 
     <view v-if="undoVisible" class="undo-notice" role="status" :style="keyboardHeight?{bottom:(keyboardHeight+84)+'px'}:null">
       <text>{{ $t(undoKind==='history'?'已清除历史记录':'已清空当前对话') }}</text>
@@ -260,7 +235,7 @@ export default {
   data: function () {
     return {
       chatMode:'guide',qaSpots:[],qaGuides:[],qaSpotId:null,spotAnchor:null,qaSession:null,qaCatalogLoading:false,catalogError:'',showQASpots:false,requestEpoch:0,historyOwner:null,applyingRoute:false,
-      keyboardVisible:false,keyboardHeight:0,recognizing:false,pendingPhoto:'',recognitionError:'',showPhotoChoices:false,photoClosing:false,scrollAnim:false,cameraOpen:false,cameraPosition:'back',cameraCollapsed:false,cameraSpeak:false,
+      keyboardVisible:false,keyboardHeight:0,recognizing:false,pendingPhoto:'',recognitionError:'',showPhotoChoices:false,photoClosing:false,scrollAnim:false,cameraSpeak:false,
       undoVisible:false,undoKind:'',showHistory:false, historyTranslating:false, historyTranslationFailed:false, text: '', msgs: [], historyMsgs: [], loading: false, chatScrollTop:0, followBottom:true, chatViewH:0, tabLeaving:false, lastSpotIds: [], recommendSpots: [], recommendLoading: false,recommendedPlan:null,
       nativeChatVoice:false,chatVoicePayload:{},
       voiceError:'',transcribing:false,voiceMode: false, recording: false, voicePressing: false, speaking: false, speakingIndex:-1,ttsLoading:false,ttsPaused:false,
@@ -320,7 +295,8 @@ export default {
     goBack:function(){
       const stack=(typeof getCurrentPages==='function')?getCurrentPages():[]
       if(stack&&stack.length>1){uni.navigateBack({delta:1});return}
-      uni.$emit('tabs:select','tour')
+      // AI 已是 tabs 里的标签页（没有上一页），返回键回到首页标签
+      uni.$emit('tabs:select','home')
     },
     openHistory:function(){this.showHistory=true;this.localizeHistory()},
     closeHistory:function(){this.showHistory=false},
@@ -594,6 +570,13 @@ export default {
       this.inputHeight=rpx?(uni.upx2px?uni.upx2px(rpx):Math.round(rpx/2)):0
     },
     onInputKeyboardHeight:function(event){this.updateKeyboardHeight(event.detail.height)},
+    // 从首页「拍照问导游」进来时直接打开相机识景。
+    openCamera:function(){
+      if(this.recognizing)return
+      this.recognitionError=''
+      this.showPhotoChoices=false
+      this.openScenicSource('camera')
+    },
     chooseScenicPhoto:function(){
       if(this.recognizing)return
       uni.hideKeyboard()
@@ -608,38 +591,6 @@ export default {
       clearTimeout(this._photoCloseTimer)
       this._photoCloseTimer=setTimeout(()=>{this.showPhotoChoices=false;this.photoClosing=false},190)
     },
-    openCameraGuide:function(){
-      if(!uni.getStorageSync('token')){uni.showToast({title:'请先登录',icon:'none'});return}
-      this.closePhotoChoices()
-      const self=this
-      setTimeout(function(){
-        uni.navigateTo({url:'/pages/camera/camera',events:{
-          captured:function(path){
-            if(!path)return
-            self.pendingPhoto=path;self.cameraSpeak=true;self.sendPhoto()
-          },
-          spoken:function(text){
-            if(!text)return
-            self._cameraReplyPending=true
-            self.text=text
-            self.sendText()
-          }
-        }})
-      },200)
-    },
-    closeCamera:function(){this.cameraOpen=false;this.cameraCollapsed=false},
-    flipCamera:function(){this.cameraPosition=this.cameraPosition==='back'?'front':'back'},
-    onCameraError:function(e){this.recognitionError='相机不可用：'+((e&&e.detail&&e.detail.errMsg)||'请检查相机权限')},
-    captureCamera:function(){
-      const self=this
-      const ctx=uni.createCameraContext()
-      if(!ctx||!ctx.takePhoto){this.recognitionError='当前设备不支持镜头导览';return}
-      ctx.takePhoto({quality:'high',success:function(res){
-        self.cameraOpen=false;self.cameraCollapsed=false
-        self.pendingPhoto=res.tempImagePath;self.cameraSpeak=true;self.sendPhoto()
-      },fail:function(){self.recognitionError='拍照失败，请重试'}})
-    },
-    albumFromCamera:function(){this.cameraOpen=false;this.cameraCollapsed=false;this.selectScenicSource(1)},
     selectScenicSource:function(index){
       const source=Number(index)===0?'camera':'album'
       this.closePhotoChoices()
@@ -942,7 +893,13 @@ export default {
     stopRecord:function(){this.voicePressing=false;if(this._voiceManager&&(this._recordStartedAt||this._recordRequestedAt))this._voiceManager.stop()},
     cancelRecord:function(){this._recordCancelled=true;this.voicePressing=false;this.recording=false;if(this._voiceManager&&(this._recordStartedAt||this._recordRequestedAt))this._voiceManager.stop()},
   },
-  onBackPress:function(){if(this.showQASpots){this.showQASpots=false;return true}if(this.showPhotoChoices){this.showPhotoChoices=false;return true}},
+  onBackPress:function(){
+    if(this.showQASpots){this.showQASpots=false;return true}
+    if(this.showPhotoChoices){this.showPhotoChoices=false;return true}
+    // AI 作为 tabs 标签页时（页面栈只有一层），系统返回键先回首页，而不是直接退出应用
+    const stack=(typeof getCurrentPages==='function')?getCurrentPages():[]
+    if(!stack||stack.length<=1){uni.$emit('tabs:select','home');return true}
+  },
   onHide:function(){this.cancelRecord();this.stopTTS();this.keyboardVisible=false;this.keyboardHeight=0;this.showPhotoChoices=false;this.showQASpots=false},
   onShow:function(){this._translationDisposed=false;if(this.historyOwner!==this.storageOwner())this.loadHistory();if(this.chatMode==='guide'&&this._welcomeReady)this.loadWelcomeCatalog();else if(this.chatMode==='guide'&&this.qaSpotId&&!this.qaSpots.length)this.loadWelcomeCatalog();this.scrollChat()},
 }

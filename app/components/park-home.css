@@ -13,12 +13,14 @@
   --park-purple: #6547ad;
   --park-bar: 64px;
   --park-map-footer: 63px;
-  --park-top: max(16px, var(--status-bar-height, 0px), env(safe-area-inset-top));
-  --park-map-top: max(0px, var(--status-bar-height, 0px), env(safe-area-inset-top));
+  --park-status-h: max(24px, var(--status-bar-height, 0px), env(safe-area-inset-top));
+  --park-top: max(16px, var(--park-status-h));
+  /* 地图铺到状态栏后面，用顶部白色渐变把图标区柔化；内容的位置保持不变 */
+  --park-map-top: 0px;
   --park-gutter: 14px;
   --park-map-radius: clamp(44px, 14.5vw, 76px);
   --park-map-gap: clamp(14px, 2.3vh, 24px);
-  --park-preview-height: clamp(226px, 42.85vh, 480px);
+  --park-preview-height: calc(clamp(210px, 41vh, 470px) + var(--park-status-h));
   --park-full-height: calc(100% - var(--park-map-top) - var(--park-bar) - var(--park-map-footer) - env(safe-area-inset-bottom));
   --park-travel: calc(var(--park-full-height) - var(--park-preview-height));
   --park-rest-offset: 0px;
@@ -113,6 +115,19 @@
   .park-dragging { cursor: grabbing; user-select: none; }
   .park-dragging .park-map-reveal { cursor: inherit; }
 }
+/* 状态栏区域：地图继续铺上去，但用白色渐变压掉地图文字，保证时间/电量可读 */
+.park-status-veil {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--park-status-h) + 18px);
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.9) 34%, rgba(255,255,255,.62) 62%, rgba(255,255,255,0) 100%);
+  transition: opacity .24s ease;
+}
+.park-expanded .park-status-veil { opacity: 0; }
 .park-map-status {
   position: absolute;
   right: 13px;
@@ -120,7 +135,7 @@
   font-size: 10px;
   color: var(--park-muted-ink);
 }
-.park-content { position: relative; width: var(--park-column); margin: 0 auto; padding: 0 var(--park-gutter) 12px; box-sizing: border-box; }
+.park-content { position: relative; width: var(--park-column); margin: 0 auto; padding: 0 var(--park-gutter) 16px; box-sizing: border-box; }
 .park-action-panel { margin-bottom: 14px; touch-action: none; }
 .park-actions {
   display: grid;
@@ -141,18 +156,27 @@
   padding: 7px 8px;
   border-radius: 17px;
   background: #f3eefb;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 10px 20px -16px rgba(74, 52, 130, 0.55);
   text-align: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.16s cubic-bezier(0.2, 0, 0, 1), background 0.16s ease, box-shadow 0.16s ease;
 }
-.park-actions button:active { background: #eee6f9; }
+.park-actions button:active { background: #eee6f9; transform: scale(0.96); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 10px -12px rgba(74, 52, 130, 0.5); }
 .park-action-icon {
-  display: grid;
-  width: 30px;
-  height: 30px;
+  display: block;
+  width: 22px;
+  height: 22px;
   flex: none;
-  place-items: center;
-  color: #7957be;
+  background-color: #7957be;
+  -webkit-mask: var(--park-icon) center / contain no-repeat;
+  mask: var(--park-icon) center / contain no-repeat;
 }
-.park-action-icon .wander-icon { width: 23px; height: 23px; }
+.park-icon-pin {
+  --park-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z'/%3E%3Ccircle cx='12' cy='10' r='3'/%3E%3C/svg%3E");
+}
+.park-icon-compass {
+  --park-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9.2'/%3E%3Cpath d='m15.6 8.4-1.7 5.2-5.2 1.7 1.7-5.2 5.2-1.7Z'/%3E%3C/svg%3E");
+}
 .park-action-name {
   display: block;
   font-size: clamp(13px, 3.6vw, 16px);
@@ -161,18 +185,32 @@
 }
 .park-home .park-section-heading {
   display: flex;
-  width: max-content;
+  width: 100%;
+  box-sizing: border-box;
   min-height: 40px;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
-  margin: 0 0 clamp(10px, 2vh, 20px);
-  padding: 0 10px;
+  /* 标题贴近轮播卡片但不贴着：按钮自身 40px 高，文字下方已有约 10px 余量，
+     这里只留 4px，加上卡片自身的 4px 上边距，视觉间距约 18px */
+  margin: 0 0 4px;
+  /* 左缘与轮播当前卡片对齐：卡片留白 56rpx(7.4667vw)，内容区已有 --park-gutter 内缩；
+     再减去汉字左侧字面留白(~1.7px)，让文字墨迹而不是文本框与卡片左缘齐平；
+     右侧同样按卡片留白收进，让箭头贴到卡片右缘 */
+  padding: 0 calc(7.4667vw - var(--park-gutter)) 0 calc(7.4667vw - var(--park-gutter) - 1.7px);
   font-size: 20px;
   text-align: left;
 }
-.park-section-heading .wander-icon { width: 16px; height: 16px; color: var(--park-purple); }
+.park-section-arrow {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  background-color: var(--park-purple);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 .park-carousel {
-  --park-card-height: clamp(162px, 27vh, 290px);
+  --park-card-height: clamp(150px, 26vh, 285px);
   margin: 0 calc(-1 * var(--park-gutter));
 }
 .park-carousel swiper, .park-carousel uni-swiper { height: var(--park-card-height); overflow: visible; }
@@ -286,7 +324,7 @@
 .park-weather-source .iconfont { font-size: 14px; }
 .park-weather.is-open .park-weather-source { top: 9px; right: 50px; bottom: auto; height: 37px; }
 .park-weather.is-open .park-weather-small { opacity: 0; visibility: hidden; transition: opacity 120ms ease-out, visibility 0s 120ms; }
-.park-weather-temp { display: flex; gap: 6px; align-items: center; font-size: 26px; color: var(--park-ink); line-height: 1.35; }
+.park-weather-temp { display: flex; gap: 6px; align-items: center; font-size: 26px; color: var(--park-ink); line-height: 1.35; font-variant-numeric: tabular-nums; }
 .park-weather-icon { color: #677e90; font-size: 20px; }
 .park-weather-sub { color: var(--park-muted-ink); font-size: 11px; }
 .park-sheet { box-sizing: border-box; padding: 10px 13px 13px; }
@@ -376,12 +414,12 @@
 .park-assistant .park-portrait { width: 36px; height: 36px; min-height: 36px; overflow: hidden; background: #ece4f9; }
 .park-portrait image, .park-portrait uni-image { width: 100%; height: 100%; display: block; }
 @media(max-width: 345px) {
-  .park-action-icon { width: 28px; height: 28px; }
+  .park-action-icon { width: 20px; height: 20px; }
 }
 @media(max-height: 660px) {
-  .park-home { --park-preview-height: clamp(190px, 41vh, 270px); }
+  .park-home { --park-preview-height: calc(clamp(180px, 39.5vh, 260px) + var(--park-status-h)); }
   .park-action-panel { margin-bottom: 10px; }
-  .park-home .park-section-heading { margin-bottom: 8px; }
+  .park-home .park-section-heading { margin-bottom: 2px; }
   .park-carousel { --park-card-height: clamp(150px, 26vh, 172px); }
   .park-sheet-scroll { max-height: 24vh; }
 }

@@ -191,6 +191,13 @@ export default {
   mounted:function(){
     this.statusH=(uni.getSystemInfoSync().statusBarHeight||20)+6
   },
+  onBackPress:function(){
+    if(this.showLogout){this.showLogout=false;return true}
+    if(this.showAbout){this.showAbout=false;return true}
+    // 「我的」作为 tabs 标签页时（页面栈只有一层），系统返回键先回首页，而不是直接退出应用
+    const stack=(typeof getCurrentPages==='function')?getCurrentPages():[]
+    if(!stack||stack.length<=1){uni.$emit('tabs:select','home');return true}
+  },
   onHide:function(){this.showAbout=false;this.showLogout=false},
   onUnload:function(){clearTimeout(this._revealTimer);clearTimeout(this._revealFallback)},
   onShow: function () {
