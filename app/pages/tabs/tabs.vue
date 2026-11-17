@@ -5,7 +5,8 @@
       <swiper-item><view class="panel-slot"><AiChat ref="ai" /></view></swiper-item>
       <swiper-item><view class="panel-slot"><Mine ref="mine" /></view></swiper-item>
     </swiper>
-    <TabDock :current="pagerCurrent" :progress="pagerCurrent" :hidden="dockHidden" :ai-hidden="aiHidden" @select="selectTab" />
+    <TabDock :current="pagerCurrent" :progress="pagerCurrent" :hidden="dockHidden" @select="selectTab" />
+    <FloatingTourButton v-if="tourOrb" label="继续导览" @activate="resumeTour" />
   </view>
 </template>
 <script>
@@ -13,22 +14,22 @@ import Home from '../home/home.vue'
 import AiChat from '../ai-chat/ai-chat.vue'
 import Mine from '../mine/mine.vue'
 import TabDock from '../../components/TabDock.vue'
+import FloatingTourButton from '../../components/FloatingTourButton.vue'
 
 const TAB_KEYS = ['home', 'ai', 'mine']
 const validIndex = index => Number.isInteger(index) && index >= 0 && index < TAB_KEYS.length
 export default {
-  components: { Home, AiChat, Mine, TabDock },
+  components: { Home, AiChat, Mine, TabDock, FloatingTourButton },
   data() {
     return { current: 0, pagerCurrent: 0, pendingTab: null, switching: false,
       panelReady: false, shellVisible: false, shownPanel: null, initialized: [false, false, false],
-      keyboardOpen: false, itineraryOpen: false, homeMap: false }
+      keyboardOpen: false, itineraryOpen: false, homeMap: false, tourOrb: false }
   },
   computed: {
     // 底部 Tab 栏只在键盘/导览全屏时收起；首页展开地图时保持可见
     dockHidden() { return this.keyboardOpen || this.itineraryOpen },
     // 展开地图时仍锁定左右翻页，避免在图上横滑误切 Tab
     pagerLocked() { return this.dockHidden || this.homeMap },
-    aiHidden() { return this.pagerCurrent === 1 },
   },
   onLoad(query) {
     const index = TAB_KEYS.indexOf((query && query.tab) || 'home')
@@ -50,7 +51,7 @@ export default {
       this.showPanel()
     })
   },
-  onShow() { this.shellVisible = true; if (this.panelReady) this.showPanel() },
+  onShow() { this.shellVisible = true; if (this.panelReady) this.showPanel(); this.syncTourOrb() },
   onHide() {
     this.shellVisible = false
     this.hidePanel()
@@ -66,7 +67,11 @@ export default {
     uni.$off('dock:sync', this._onDockSync)
     uni.$off('tabs:select', this._onTabsSelect)
   },
-  onBackPress() { return this.callHook(this.current, 'onBackPress') },
+  onBackPress() {
+    // 先交给当前 tab 处理；没处理也不触发系统默认的“再按一次退出应用”提示。
+    this.callHook(this.current, 'onBackPress')
+    return true
+  },
   methods: {
     panel(index) { return [this.$refs.home, this.$refs.ai, this.$refs.mine][index] || null },
     // Embedded pages retain their component instances; forward page hooks only when visible.
@@ -119,6 +124,17 @@ export default {
       }
       // 等翻页动画落定再拉起相机，避免相机盖在切换动画上。
       setTimeout(open, 300)
+    },
+    syncTourOrb() {
+      var saved = null
+      try { saved = uni.getStorageSync('active-tour-session') } catch (error) {}
+      this.tourOrb = !!(saved && saved.sid)
+    },
+    resumeTour() {
+      var saved = null
+      try { saved = uni.getStorageSync('active-tour-session') } catch (error) {}
+      if (!saved || !saved.sid) { this.tourOrb = false; return }
+      uni.navigateTo({ url: '/pages/tour/tour?sessionId=' + saved.sid })
     },
     selectTab(index) {
       if (!validIndex(index)) return

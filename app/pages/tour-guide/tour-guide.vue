@@ -1,5 +1,5 @@
 <template>
-  <view class="page aurora-page">
+  <view class="page aurora-page" :class="{ 'wander-mode': tab==='wander' }">
     <!-- #ifdef APP-PLUS -->
     <view class="app-status-bar-shield" aria-hidden="true"></view>
     <!-- #endif -->
@@ -363,6 +363,7 @@ export default {
       })
     },
     exitWander(){
+      try { uni.$emit('dock:sync', { source: 'tour', hide: false }) } catch (error) {}
       this.switchPlanningTab('route')
       uni.navigateBack({delta:1,fail:function(){}})
     },
@@ -370,6 +371,8 @@ export default {
     openSharedWanderPlan(handoff){
       if(this.starting)return
       try{
+        // 记住最近一次「存入导览路线」，首页「路线规划」可直接回到这条随心逛路线
+        try{ uni.setStorageSync('wander-last-handoff', handoff) }catch(_){}
         const url=sharedPlanUrl(handoff)
         this.starting=true
         uni.navigateTo({url,success:()=>{this.$refs.wander?.go('time')},
@@ -646,5 +649,11 @@ export default {
 
 .planner-control{display:flex;align-items:center;justify-content:space-between;gap:12px}.planner-footnote{font-size:12px;text-align:center}.is-generating{opacity:.65}
 .bl-hd .planning-stop-count{margin-left:auto;font-size:25rpx;font-weight:400;color:var(--ng-secondary);text-align:right}
+/* 随心逛页顶部整块白色：状态栏遮罩也一起变白 */
+.page.aurora-page.wander-mode > .app-status-bar-shield {
+  background: #fff !important;
+  background-image: none !important;
+}
+
 </style>
 

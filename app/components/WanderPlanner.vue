@@ -5,11 +5,13 @@
         <view class="app-back-icon wander-back-arrow" aria-hidden="true"></view>
       </button>
       <text class="wander-title">{{ t(title) }}</text>
+      <button v-if="arranging" class="wander-loading-cancel" @tap="cancel">{{ t('取消') }}</button>
       <view v-if="mode==='time' && stage==='recommended'" class="wander-tools">
         <button class="wander-square" role="button" :aria-label="t('加入路线')"  @tap="adding=true"><WanderIcon name="plus" /></button>
       </view>
     </view>
 
+    <view class="wander-sheet">
     <scroll-view :key="routeMapStage ? 'route-map' : stage" :scroll-top="scrollTop" @scroll="trackScroll"
       :show-scrollbar="false" class="wander-scroll" :scroll-y="!mapInteracting">
       <view class="wander-content">
@@ -111,22 +113,19 @@
           </view>
         </template>
 
-        <view v-else-if="stage==='loading'" class="wander-loading" role="status">
-          <view class="wander-loading-pair" aria-hidden="true"><view><WanderIcon name="pin" /></view><view><WanderIcon name="route" /></view></view>
-          <text>{{ t('正在安排你的路线') }}</text>
-          <view class="wander-progress" aria-hidden="true"><view></view></view>
-        </view>
-
         <text v-if="error" class="wander-notice wander-error" role="alert">{{ t(error) }}</text>
       </view>
     </scroll-view>
 
-    <view v-if="['featuredDetail','explore','time','settings','recommended','preview','loading'].includes(stage)" class="wander-footer">
+    <view v-if="['featuredDetail','explore','time','settings','recommended','preview'].includes(stage)" class="wander-footer">
       <text v-if="['recommended','preview'].includes(stage) && routeWarning" class="wander-notice">{{ t(routeWarning) }}</text>
       <button v-if="stage==='featuredDetail'" class="wander-primary" @tap="useFeatured">{{ t('选择此路线') }}</button>
       <button v-if="stage==='explore'" class="wander-primary" :disabled="!walkStyle" @tap="go('time')">{{ t('选择游览时长') }}</button>
-      <button v-if="stage==='time'" class="wander-primary" @tap="chooseTimeCard">{{ t('下一步') }}</button>
-      <button v-if="stage==='settings'" class="wander-primary" @tap="generate()"><WanderIcon name="route" />{{ t('继续安排') }}</button>
+      <view v-if="stage==='time'" class="wander-time-actions">
+        <button class="wander-primary" :disabled="arranging || saved" @tap="chooseTimeCard">{{ t(saved?'已存入':(arranging?'正在安排…':'存入导览路线')) }}</button>
+        <button class="wander-secondary wander-home" @tap="$emit('exit')">{{ t('返回首页') }}</button>
+      </view>
+      <button v-if="stage==='settings'" class="wander-primary" :disabled="arranging" @tap="generate()"><WanderIcon name="route" />{{ t(arranging?'正在安排…':'继续安排') }}</button>
       <view v-if="stage==='recommended'" class="wander-footer-row">
         <button class="wander-secondary" @tap="back">{{ t(mode==='blind'?'重新选择':'去修改') }}</button>
         <button class="wander-primary" :disabled="!overview.complete || overBudget" @tap="openCandidate(candidateIndex)">{{ t(mode==='blind'?'确认本次路线':'选这条路线') }}</button>
@@ -135,8 +134,10 @@
         <button class="wander-secondary wander-steps-toggle" :aria-pressed="avoidSteps" :disabled="senior || child || walkStyle==='accessible'" @tap="updateCondition('fewSteps',!fewSteps)">{{ t('避开台阶') }}</button>
         <button class="wander-primary" :disabled="!overview.complete || overBudget" @tap="start">{{ t('开始游览') }}</button>
       </view>
-      <button v-if="stage==='loading'" class="wander-secondary wander-cancel" @tap="cancel"><WanderIcon name="close" />{{ t('取消') }}</button>
     </view>
+    </view>
+    <view v-if="wanderToast" class="wander-toast" role="status">{{ wanderToast }}</view>
+    <PageDock :active="0" />
     <view v-if="adding" class="wander-modal" @tap="adding=false">
       <view class="wander-modal-card" @tap.stop>
         <view class="wander-section-title"><text>{{ t('加入路线') }}</text><button class="wander-square" role="button" :aria-label="t('关闭')" @tap="adding=false"><WanderIcon name="close" /></button></view>
@@ -151,6 +152,7 @@
 
 <script>
 import WanderIcon from './WanderIcon.vue'
+import PageDock from './PageDock.vue'
 import RouteRoadMap from './RouteRoadMap.vue'
 import { assetUrl } from '../common/config.js'
 import { STEP_LINES } from '../common/park-home-data.js'
@@ -184,15 +186,15 @@ function matchesStyle(spot, style) {
 }
 
 export default {
-  components: { WanderIcon, RouteRoadMap },
+  components: { WanderIcon, RouteRoadMap, PageDock },
   props: { routes: Array, spots: Array, loading: Boolean, catalogError: String },
-  emits: ['begin', 'exit', 'reload', 'theme-selected'],
+  emits: ['begin', 'plan', 'exit', 'reload', 'theme-selected'],
   data() {
     return { stage: 'explore', durations, walkingStyles, walkStyle:'', failed: {}, featured: null, featuredFromHome: false, mode: 'time',
       budget: 60, party: 1, senior: false, child: false, fewSteps: false, entry: 1, exit: 0,
       error: '', overview: null, ids: [], returnStage: '',
-      recommendationName:'推荐路线', candidates:[], candidateIndex:0, adding: false,
-      showSteps:false, mapInteracting:false, scrollTop:0, motionClass:'', motionStyle:{} }
+      recommendationName:'推荐路线', candidates:[], candidateIndex:0, adding: false, arranging: false, saved: false,
+      showSteps:false, mapInteracting:false, scrollTop:0, motionClass:'', motionStyle:{}, wanderToast:'' }
   },
   computed: {
     title() {
@@ -230,11 +232,26 @@ export default {
         end_area: areas[this.exit].value, avoid_steps: this.avoidSteps }
     },
   },
-  beforeUnmount() { this.abort() },
+  watch: {
+    // 任何条件变化都让「已存入」失效，需要重新存入
+    budget() { this.saved = false },
+    walkStyle() { this.saved = false },
+    senior() { this.saved = false },
+    child() { this.saved = false },
+    fewSteps() { this.saved = false },
+    entry() { this.saved = false },
+    exit() { this.saved = false },
+  },
+  beforeUnmount() { this.abort(); clearTimeout(this._toastTimer) },
   methods: {
     walkingDistance, imageUrl: assetUrl,
     spotName(id) { return this.t(this.spots.find(s => s.spot_id===id)?.spot_name || '景点') },
     trackScroll(event) { this._scrollPosition = event.detail.scrollTop },
+    showWanderToast(text) {
+      this.wanderToast = text
+      clearTimeout(this._toastTimer)
+      this._toastTimer = setTimeout(() => { this.wanderToast = '' }, 2200)
+    },
     go(stage) {
       const from=this.stage
       const currentScroll=this._scrollPosition || 0
@@ -265,7 +282,7 @@ export default {
       if (this.adding) { this.adding=false; return true }
       if (['explore','featured'].includes(this.stage)) return false
       if (this.stage==='featuredDetail' && this.featuredFromHome) return false
-      if (this.stage==='loading') { this.cancel(); return true }
+      if (this.arranging) { this.cancel(); return true }
       this.go({featuredDetail:'featured',time:'explore',settings:'featuredDetail',recommended:'time',
         preview:this.mode==='featured'?'settings':'recommended'}[this.stage])
       return true
@@ -314,7 +331,7 @@ export default {
       })
     },
     abort() { this._version=(this._version||0)+1; this._request?.abort(); this._request=null },
-    cancel() { this.abort(); this.go(this.returnStage) },
+    cancel() { this.abort(); this.arranging=false; this.go(this.returnStage) },
     async request(path, options, version) {
       if (version!==this._version) return null
       const task=this._request=routeRequest(path,options,0,20000)
@@ -325,16 +342,19 @@ export default {
       this.returnStage=this.stage
       this.abort()
       const version=this._version
-      this.go('loading')
+      // 不再切到「正在安排你的路线」整屏；当前页面保持，仅按钮显示安排中
+      this.arranging=true
       try {
         const result=await work(version)
         if (version!==this._version) return
-        this.go(next)
+        if (next!==this.stage) this.go(next)
         return result
       } catch(error) {
         if (version!==this._version) return
         this.go(this.returnStage)
         this.error=error.message
+      } finally {
+        if (version===this._version) this.arranging=false
       }
     },
     async buildPreview(ids, version) {
@@ -437,10 +457,13 @@ export default {
         this.candidates=candidates
         this.selectCandidate(0)
         return true
-      },'loading').then(result=>{
-        if(result && this.stage==='loading') this.$emit('plan',{
-          ids:this.ids.slice(), planning:{...this.planning}, senior:this.senior, child:this.child,
-        })
+      },this.stage).then(result=>{
+        if (result) {
+          const handoff = { ids:this.ids.slice(), planning:{...this.planning}, senior:this.senior, child:this.child }
+          try { uni.setStorageSync('wander-last-handoff', handoff) } catch (_) {}
+          this.saved = true
+          this.showWanderToast(this.t('已存入，可在首页「路线规划」查看'))
+        }
         return result
       })
     },
@@ -474,7 +497,7 @@ export default {
 .wander-planner {
   position:fixed; top:0; left:0; width:100%; height:100vh; height:100dvh; z-index:12;
   box-sizing:border-box; display:flex; flex-direction:column; min-height:0;
-  color:#292c43; background:linear-gradient(151deg,#efedf9 2%,#f7f5fb 94%); padding-top:var(--status-bar-height, 0px); overflow:hidden;
+  color:#292c43; background:#fff; padding-top:var(--status-bar-height, 0px); overflow:hidden;
 }
 .wander-header, .wander-content, .wander-footer { width:100%; max-width:540px; margin:0 auto; box-sizing:border-box; padding-inline:20px; }
 .wander-header { position:relative; min-height:64px; display:flex; align-items:center; padding-block:8px; flex:none; }
@@ -482,6 +505,9 @@ export default {
 .wander-title { position:absolute; left:50%; transform:translateX(-50%); max-width:calc(100% - 140px);
   text-align:center; font-size:20px; line-height:1.4; text-wrap:balance; pointer-events:none; }
 .wander-header > .wander-square, .wander-tools { position:relative; z-index:1; }
+.wander-sheet { flex:1; min-height:0; display:flex; flex-direction:column; width:100%; max-width:540px; margin:0 auto; box-sizing:border-box; background:linear-gradient(151deg,#efedf9 2%,#f7f5fb 94%); border-radius:24px 24px 0 0; overflow:hidden; }
+/* 上面白色、下面浅紫，内容区顶部两角圆角 */
+.wander-sheet .wander-scroll { flex:1; height:0; min-height:0; }
 .wander-scroll { flex:1; height:0; min-height:0; }
 .wander-content { display:grid; gap:13px; padding-block:8px 24px; }
 .wander-feature image, .wander-feature-shade { position:absolute; inset:0; width:100%; height:100%; }
@@ -525,7 +551,7 @@ export default {
 .stage-preview .wander-road :deep(.route-dom-map) { height:clamp(152px,22vh,195px); border-radius:18px; }
 .wander-notice { color:#6e5236; }
 .wander-error { color:#963a53; }
-.wander-footer { margin-top:auto; padding-top:8px; padding-bottom:env(safe-area-inset-bottom, 0px); flex:none; }
+.wander-footer { margin-top:auto; padding-top:8px; padding-bottom:8px; flex:none; }
 .wander-planner .wander-primary, .wander-planner .wander-secondary {
   width:100%; padding:9px 14px; border-radius:16px; display:flex; justify-content:center; align-items:center; gap:8px; font-size:16px;
 }
@@ -554,6 +580,10 @@ export default {
 }
 .stage-featuredDetail .wander-card { border:1px solid #eee8f4; }
 .wander-footer-row .wander-primary { flex:1.6; }
+/* 游览时长页：左「存入导览路线」+ 右「返回首页」，宽度 4:1 */
+.wander-time-actions { display:flex; align-items:stretch; gap:10px; width:100%; }
+.wander-time-actions .wander-primary { flex:4 1 0%; min-width:0; }
+.wander-time-actions .wander-home { flex:1 1 0%; min-width:0; padding:0 4px; font-size:14px; white-space:nowrap; }
 .wander-footer-row .wander-secondary { flex:1; min-width:0; }
 .wander-footer-row button { min-height:50px; padding-inline:6px; white-space:normal; text-wrap:balance; }
 .wander-planner .wander-steps-toggle { flex:1.05; }
@@ -587,10 +617,17 @@ export default {
 .wander-layer[aria-pressed="true"] { background:#e8ddf8; }
 .wander-map-key { top:10px; }
 .wander-map-key view { width:17px; border-top:2px dashed #b84758; }
-.stage-loading { background:linear-gradient(132deg,#dcdcf7,#eef1fb); }
+.wander-header { background:#fff; }
+.wander-loading-cancel { position:absolute; right:20px; top:50%; transform:translateY(-50%); min-height:32px; line-height:32px; padding:0 14px; border-radius:16px; background:#f0ecfa; color:#5d4b96; font-size:14px; font-weight:500; }
+.stage-loading { background:#fff; }
 .wander-loading-pair { display:flex; padding:10px 0 14px; }
 .wander-loading-pair > view { display:grid; place-items:center; background:#f6f6ffba; color:#65729a; border-radius:26px; width:95px; height:95px; transform:rotate(-12deg); }
 .wander-loading-pair > view+view { margin-left:-13px; background:#fafaff; transform:translateY(12px) rotate(9deg); }
+/* 两张卡片交替上下浮动 */
+.wander-loading-pair > view:first-child { animation:wander-card-up 1.8s ease-in-out infinite; }
+.wander-loading-pair > view+view { animation:wander-card-down 1.8s ease-in-out infinite; }
+@keyframes wander-card-up { 0%,100% { transform:rotate(-12deg) translateY(0); } 50% { transform:rotate(-9deg) translateY(-10px); } }
+@keyframes wander-card-down { 0%,100% { transform:translateY(12px) rotate(9deg); } 50% { transform:translateY(2px) rotate(6deg); } }
 .wander-loading-pair .wander-icon { width:38px; height:38px; }
 .wander-planner .wander-cancel { width:auto; min-width:116px; margin:0 auto; border-radius:24px; background:#f7f7ff; }
 .wander-modal { position:absolute; inset:0; z-index:15; background:#29223f55; display:flex; align-items:flex-end; justify-content:center; }
@@ -628,7 +665,53 @@ export default {
 .candidate-option text+text { color:#605476; font-size:13px; }
 @media(max-height:730px) { .wander-intro{padding:18px 0 30px} .wander-link.blind-choice+.blind-choice{margin-top:24px} }
 @media(prefers-reduced-motion:reduce) {
-  .wander-progress view, .wander-planner.is-card-expanding { animation:none; }
+  .wander-progress view, .wander-planner.is-card-expanding, .wander-loading-pair > view { animation:none; }
   .wander-planner button:active { transform:none !important; }
 }
+/* 底部主按钮统一为紫边白色玻璃，不再整块紫色 */
+.wander-planner .wander-primary,
+.wander-planner .wander-secondary,
+.wander-planner .wander-cancel {
+  background: linear-gradient(135deg, rgba(255,255,255,.97), rgba(248,246,255,.9));
+  color: #5c4bc0;
+  border: 1px solid rgba(139,120,230,.5);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 8px 20px -12px rgba(90,70,180,.28);
+}
+.wander-planner .wander-primary { font-weight: 600; }
+.wander-planner .wander-secondary { border-color: rgba(139,120,230,.32); color: #4f4290; }
+.wander-planner .wander-primary:active:not([disabled]),
+.wander-planner .wander-secondary:active:not([disabled]) { background: #f1ebff; }
+
+/* 选中态统一：紫边白玻璃，不再整块紫色 */
+.wander-planner .wander-times button[aria-pressed="true"],
+.wander-planner .wander-pills button[aria-pressed="true"],
+.wander-planner .wander-steps-toggle[aria-pressed="true"],
+.wander-planner .wander-layer[aria-pressed="true"] {
+  background: linear-gradient(135deg, rgba(255,255,255,.97), rgba(248,246,255,.9));
+  color: #5c4bc0;
+  border: 1px solid rgba(139,120,230,.6);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 8px 20px -14px rgba(90,70,180,.3);
+  font-weight: 600;
+}
+.wander-planner .wander-times button[aria-pressed="true"] .wander-icon { color: #7659bb; }
+
+.wander-toast {
+  position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: 78%;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.97);
+  border: 1px solid rgba(139,120,230,.45);
+  box-shadow: 0 10px 26px -14px rgba(60,45,120,.35);
+  color: #5c4bc0;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  z-index: 60;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 </style>

@@ -86,6 +86,7 @@ export default {
       const last = list[list.length - 1]
       // 景点详情页的返回统一回 App 首页；首页就在栈里时直接回退，保留首页状态。
       if (last && last.type === 'scenic-back') this.backHome()
+      if (last && last.type === 'app-tab') this.goAppTab(last.tab)
       if (last && last.type === 'save-checkin' && last.spot) {
         const list = uni.getStorageSync('my_checkins') || []
         list.unshift({ id: Date.now(), spot_name: last.spot, time: new Date(last.time || Date.now()).toLocaleString() })
@@ -114,6 +115,22 @@ export default {
         url: home,
         fail: () => { uni.navigateBack({ delta: 1 }) }
       })
+    },
+    goAppTab(tab) {
+      const home = '/pages/tabs/tabs'
+      const key = ['home', 'ai', 'mine'].includes(String(tab)) ? String(tab) : 'home'
+      const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+      const previous = pages.length > 1 ? pages[pages.length - 2] : null
+      const previousRoute = previous && previous.route ? String(previous.route) : ''
+      if (previousRoute === 'pages/tabs/tabs') {
+        uni.navigateBack({
+          delta: 1,
+          success: () => { setTimeout(() => { try { uni.$emit('tabs:select', key) } catch (error) {} }, 220) },
+          fail: () => { uni.reLaunch({ url: home + '?tab=' + key }) }
+        })
+        return
+      }
+      uni.reLaunch({ url: home + '?tab=' + key })
     }
   }
 }

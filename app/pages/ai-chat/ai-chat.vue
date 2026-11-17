@@ -1153,4 +1153,21 @@ export default {
 
 <style scoped>
 .chat-ref-page>.chat-voice-runtime{position:fixed!important;left:-1000px;top:0;width:240px;height:400px;pointer-events:none;opacity:0;overflow:hidden}
+/* 底部 tab 栏常驻：输入栏抬到 tab 栏之上，键盘弹起时 tab 栏收起、输入栏落回底部 */
+.chat-ref-page .conversation-stage { padding-bottom: calc(128rpx + 64px + env(safe-area-inset-bottom, 0px)); }
+.chat-ref-page .bottom-fixed { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); padding-bottom: 0; }
+.chat-ref-page .bottom-fixed.keyboard-open { bottom: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* 状态栏/导航栏保持白色；中间对话区铺紫色，左上右上圆角 */
+.chat-ref-page.aurora-page { background: #fff !important; }
+.chat-ref-page .chat-scenery,
+.chat-ref-page .ink-bg { display: none !important; }
+.chat-ref-page .app-status-bar-shield { background: #fff !important; }
+.chat-ref-page .nav { background: #fff !important; }
+.chat-ref-page .conversation-stage {
+  margin: 0 6rpx;
+  background: #f0eefb;
+  border-radius: 32rpx 32rpx 0 0;
+  overflow: hidden;
+}
 </style>

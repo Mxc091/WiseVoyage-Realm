@@ -11,13 +11,7 @@
     </view>
 
     <!-- 自定义导航栏（毛体标题） -->
-    <view class="nav" :style="{paddingTop:statusH+'px'}">
-      <!-- 扫码领取：扫描电脑网页上的路线二维码，直接领取网页上选好的路线 -->
-      <view class="nav-scan" hover-class="nav-scan-press" :hover-stay-time="70" role="button" :aria-label="t('扫码')" @tap="scanRoute">
-        <text class="scan-icon iconfont icon-scan" aria-hidden="true"></text>
-        <text class="nav-scan-label">{{ t('扫码') }}</text>
-      </view>
-    </view>
+    <view class="nav" :style="{paddingTop:statusH+'px'}"></view>
 
     <!-- 头像卡片 -->
     <view class="profile-card">
@@ -86,18 +80,25 @@
 <script>
 import NocturneConfirm from '../../components/NocturneConfirm.vue'
 import AuthPage from '../auth/auth.vue'
-import { BASE_URL, assetUrl, isLocalStationOrigin } from '../../common/config.js'
-import { CLAIM_ROUTE, clearPendingClaim, saveClaim } from '../../common/station-claim.js'
+import { BASE_URL, assetUrl } from '../../common/config.js'
 import { localizeChatMessages, warmChatTranslations, getChatTranslationCache } from '../../common/chat-language.js'
 import { LANGUAGE_STORAGE_KEY, translateTour } from '../../common/tour-language.js'
 export default {
   components:{NocturneConfirm,AuthPage},
   data: function () {
+    // 先用本地缓存渲染，避免从别的页面进入「我的」时先闪一下“游客”再变成账号名。
+    var cachedName = '', cachedId = '', cachedAvatar = ''
+    try {
+      cachedName = uni.getStorageSync('username') || ''
+      cachedId = uni.getStorageSync('user_id') || ''
+      var rawAvatar = uni.getStorageSync('avatar') || ''
+      cachedAvatar = rawAvatar ? assetUrl(rawAvatar) : ''
+    } catch (error) {}
     return {
       // 与 pages/tour/tour.vue 共用同一个 storage key，切换后全 App 一致。
 
-      username: '', userId: '', avatarUrl: '', statusH: 20,
-      scanning: false,
+      username: cachedName, userId: cachedId, avatarUrl: cachedAvatar, statusH: 20,
+
       showAbout: false, showLogout: false, loginRevealOpen: false, revealOriginX: 206, revealOriginY: 640,
     }
   },
@@ -138,23 +139,6 @@ export default {
     },
     goTab:function(p){uni.reLaunch({url:p})},
     goHistory:function(){uni.navigateTo({url:'/pages/mine/checkins'})},
-    // 扫码只打开路线确认页，由游客选择数字人后再创建导览。
-    scanRoute: function () {
-      if(this.scanning)return
-      this.scanning=true
-      uni.scanCode({onlyFromCamera:false,scanType:['qrCode'],
-        success:result=>{
-          let claim
-          try{claim=saveClaim(result&&result.result)}
-          catch(_){uni.showToast({title:this.t('请扫描网页上的路线领取码'),icon:'none'});return}
-          if(claim.origin&&!isLocalStationOrigin(claim.origin)){uni.showToast({title:this.t('只允许连接局域网电脑的18000端口'),icon:'none'});return}
-          const query='claim='+encodeURIComponent(claim.token||'')+'&server='+encodeURIComponent(claim.origin||'')
-          uni.navigateTo({url:CLAIM_ROUTE+'?'+query,fail:()=>uni.showToast({title:this.t('打开领取页失败，请重试'),icon:'none'})})
-        },
-        fail:err=>{if(!String(err&&err.errMsg||'').includes('cancel'))uni.showToast({title:this.t('扫码失败，请检查相机权限'),icon:'none'})},
-        complete:()=>{this.scanning=false}
-      })
-    },
     handleLogout: function () { this.showLogout=true },
     // 退出登录：清完会话后让登录页从「退出登录」这一行弹性展开，动画结束再切真实登录页，避免生硬换页。
     confirmLogout: function () {

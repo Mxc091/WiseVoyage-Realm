@@ -6,7 +6,7 @@ const source = (file) => fs.readFileSync(require('node:path').join(__dirname, '.
 function planner(request) {
   const script = source('components/WanderPlanner.vue').match(/<script>([\s\S]*?)<\/script>/)[1]
   const options = vm.runInNewContext(script.replace(/^import .*$/gm,'').replace('export default','globalThis.component=')+';component', {
-    WanderIcon:{}, RouteRoadMap:{}, assetUrl:x=>x, walkingDistance(){},
+    WanderIcon:{}, RouteRoadMap:{}, PageDock:{}, assetUrl:x=>x, walkingDistance(){},
     previewOptions:(ids,plan)=>({...plan,spot_ids:ids}), routeRequest:request,
   })
   const state = {...options.data(),$emit(){},spots:[{spot_id:1},{spot_id:2}],guides:[]}
@@ -20,8 +20,10 @@ test('cancelling planning aborts the request and discards a late result', async 
   const state=planner(()=>({ promise:new Promise(resolve=>{complete=resolve}), abort(){aborted++} }))
   state.stage='time'
   const pending=state.generate()
-  assert.equal(state.stage,'loading')
-  state.cancel()
+  assert.equal(state.stage,'time')
+  assert.equal(state.arranging,true)
+  assert.equal(state.back(),true)
+  assert.equal(state.arranging,false)
   complete({spot_ids:[1]})
   await pending
   assert.equal(aborted,1)
@@ -35,8 +37,10 @@ test('cancelling during location lookup prevents a late recommendation request',
   state.locationEntry=()=>new Promise(resolve=>{locate=resolve})
   state.stage='time'
   const pending=state.chooseTime(30)
-  assert.equal(state.stage,'loading')
-  state.cancel()
+  assert.equal(state.stage,'time')
+  assert.equal(state.arranging,true)
+  assert.equal(state.back(),true)
+  assert.equal(state.arranging,false)
   locate(2)
   await pending
   assert.equal(recommendations,0)

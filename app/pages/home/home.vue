@@ -47,6 +47,7 @@ import ParkHero from '../../components/ParkHero.vue'
 import DashboardIcon from '../../components/DashboardIcon.vue'
 import { CLAIM_ROUTE, parseClaim } from '../../common/station-claim.js'
 import { isLocalStationOrigin } from '../../common/config.js'
+import { sharedPlanUrl } from '../../common/wander-handoff.js'
 
 const entries = [
   { key: 'catalog', label: '景点图鉴', icon: 'pavilion' },
@@ -78,7 +79,16 @@ export default {
     chooseRegion() { uni.showActionSheet({ itemList: [this.t('北京 · 颐和园')] }) },
     open(key) {
       if (key === 'scan') { this.scan(); return }
+      if (key === 'plan') { this.openPlan(); return }
       if (destinations[key]) uni.navigateTo({ url: destinations[key] })
+    },
+    openPlan() {
+      let url = destinations.plan
+      try {
+        const handoff = uni.getStorageSync('wander-last-handoff')
+        if (handoff) url = sharedPlanUrl(handoff)
+      } catch (_) {}
+      uni.navigateTo({ url })
     },
     scan() {
       if (this.scanning) return

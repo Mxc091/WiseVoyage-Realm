@@ -62,13 +62,16 @@
         </view>
       </view>
     </scroll-view>
+    <PageDock :active="2" />
   </view>
 </template>
 
 <script>
 import { BASE_URL } from '../../common/config.js'
 import { SCENIC_COVERS } from '../../common/scenic-covers.js'
+import PageDock from '../../components/PageDock.vue'
 export default {
+  components: { PageDock },
   data: function () {
     return { headerTop: 48, items: [], deviceId: '', refreshing: false, flying: false, dx: 0, dy: 0, startX: 0, startY: 0, dragging: false }
   },
@@ -206,14 +209,14 @@ export default {
 </script>
 
 <style scoped>
-.checkins-page { min-height: 100vh; background: #f7f4ff; -webkit-font-smoothing: antialiased; }
+.checkins-page { height: 100vh; background: #f7f4ff; -webkit-font-smoothing: antialiased; padding-bottom: 0 !important; overflow: hidden; display: flex; flex-direction: column; }
 .aurora-background { position: fixed; inset: 0; background: linear-gradient(160deg, #f8f5ff 0%, #f1edfe 52%, #edf3fb 100%); z-index: 0; }
 .nav { position: relative; z-index: 2; display: flex; align-items: center; padding: 0 24rpx 20rpx; }
 .nav-back { width: 72rpx; height: 72rpx; border-radius: 0; display: flex; align-items: center; justify-content: center; background: transparent; box-shadow: none; transition: transform 160ms cubic-bezier(.2,.8,.2,1); }
 .nav-back:active { transform: scale(.96); }
 .nav-back .iconfont { font-size: 34rpx; color: #3a3150; }
 .nav-title { flex: 1; text-align: center; font-size: 34rpx; font-weight: 600; color: #282332; margin-right: 64rpx; }
-.main { position: relative; z-index: 1; padding: 12rpx max(3px, env(safe-area-inset-right, 0px)) calc(24rpx + env(safe-area-inset-bottom)) max(3px, env(safe-area-inset-left, 0px)); box-sizing: border-box; height: calc(100vh - 120rpx); }
+.main { position: relative; z-index: 1; flex: 1; min-height: 0; padding: 12rpx max(3px, env(safe-area-inset-right, 0px)) 24rpx max(3px, env(safe-area-inset-left, 0px)); box-sizing: border-box; }
 .empty { display: flex; flex-direction: column; align-items: center; padding-top: 22vh; }
 .empty-badge { width: 140rpx; height: 140rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(255,255,255,.95), rgba(235,228,255,.9)); box-shadow: inset 0 1rpx 0 #fff, 0 18rpx 40rpx -24rpx rgba(70,50,130,.35); }
 .empty-icon { width: 64rpx; height: 64rpx; }
@@ -262,4 +265,17 @@ export default {
 .card-icon { width: 36rpx; height: 36rpx; }
 .card-name { display: block; padding-right: 92rpx; font-size: 36rpx; line-height: 1.3; font-weight: 600; color: #282332; }
 .card-time { display: block; margin-top: 6rpx; font-size: 25rpx; color: #7d7590; font-variant-numeric: tabular-nums; }
+
+/* 状态栏/导航栏保持白色；中间内容区铺紫色，左上右上圆角 */
+.checkins-page.aurora-page { background: #fff !important; }
+.checkins-page .aurora-background,
+.checkins-page .hand-paper { display: none !important; }
+.checkins-page .app-status-bar-shield { background: #fff !important; }
+.checkins-page .nav { background: #fff !important; padding-bottom: 18rpx; }
+.checkins-page .main {
+  margin: 0 6rpx;
+  padding: 20rpx 8rpx 24rpx;
+  background: #f0eefb !important;
+  border-radius: 32rpx 32rpx 0 0;
+}
 </style>

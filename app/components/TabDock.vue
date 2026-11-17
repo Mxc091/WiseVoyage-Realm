@@ -1,5 +1,5 @@
 <template>
-  <view class="dock" :style="dockStyle">
+  <view class="dock" :class="{ 'dock--inline': inline }" :style="dockStyle">
     <view class="dock-inner">
       <view v-for="(tab, i) in tabs" :key="tab.key" class="dock-item" :class="{ on: current === i }" @tap="pick(i)">
         <WanderIcon v-if="tab.key==='ai'" class="dock-headphones" name="headphones" :style="iconStyle(i)" />
@@ -26,6 +26,8 @@ export default {
     progress: { type: Number, default: 0 },
     hidden: { type: Boolean, default: false },
     aiHidden: { type: Boolean, default: false },
+    // 二级页把 tab 栏放进页面流里，避免 fixed 在部分页面被安全区挤出屏幕
+    inline: { type: Boolean, default: false },
   },
   emits: ['select'],
   data() {
@@ -39,7 +41,7 @@ export default {
   },
   computed: {
     // Match the pager transition without sending per-frame updates across the App bridge.
-    hideAmount() { return this.aiHidden || this.hidden ? 1 : 0 },
+    hideAmount() { return this.inline ? 0 : (this.aiHidden || this.hidden ? 1 : 0) },
     dockStyle() {
       const h = clamp(this.hideAmount, 0, 1)
       return {
@@ -79,5 +81,6 @@ export default {
 /* 选中态不再用胶囊底色，只靠字色/图标色和轻微上浮区分 */
 .dock-item.on .dock-icon{transform:translateY(-1.6px) scale(1.07)}
 .dock-safe{height:env(safe-area-inset-bottom);min-height:0}
+.dock.dock--inline{position:relative;bottom:auto;left:auto;right:auto;flex-shrink:0;transform:none!important;opacity:1!important;pointer-events:auto!important;will-change:auto}
 @media(prefers-reduced-motion:reduce){.dock,.dock-icon,.dock-label{transition:none}}
 </style>
